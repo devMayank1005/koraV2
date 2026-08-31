@@ -12,31 +12,91 @@
  */
 import { announce, connect, resolveTarget } from "./lib/db";
 import { fromPostgresJs } from "./lib/executor";
-import { readV1Clients } from "./lib/read-v1";
+import { readV1Clients, type V1Client } from "./lib/read-v1";
+import { readV1ClientsViaRest, resolveRest, probeRest } from "./lib/rest";
 import { planBackfill } from "./lib/backfill-core";
 import { countAttachments } from "./lib/attachments";
 import { printSummary, printTable, writeReport } from "./lib/report";
 
-async function main() {
-  const target = resolveTarget();
-  announce("preflight — read-only scan", target, "no writes");
-
-  const sql = connect(target);
-  const exec = fromPostgresJs(sql);
-
+/**
+ * Reads v1 through whichever credentials are available.
+ *
+ * A direct connection is preferred, but the Supabase URL + service-role key are
+ * usually already provisioned while the database password often is not. Since
+ * this tool only ever reads, PostgREST is entirely sufficient — and getting the
+ * cleanup list moving matters more than the transport.
+ */
+async function loadClients(): Promise<{
+  clients: V1Client[];
+  label: string;
+  close: () => Promise<void>;
+}> {
+  let target;
   try {
+    target = resolveTarget();
+  } catch {
+    target = null;
+  }
+
+  if (target) {
+    announce("preflight — read-only scan", target, "no writes (direct)");
+    const sql = connect(target);
+    const exec = fromPostgresJs(sql);
     const [{ ok }] = await exec.query<{ ok: boolean }>(
       `select to_regclass('public.clients') is not null as ok`,
     );
     if (!ok) {
-      console.error(
-        "  The v1 `clients` table does not exist on this target.\n" +
-          "  Point MIGRATION_DATABASE_URL at the database holding live v1 data.\n",
+      await sql.end({ timeout: 5 });
+      throw new Error(
+        "The v1 `clients` table does not exist on this target.\n" +
+          "  Point MIGRATION_DATABASE_URL at the database holding live v1 data.",
       );
-      process.exit(2);
     }
+    return {
+      clients: await readV1Clients(exec),
+      label: target.label,
+      close: () => sql.end({ timeout: 5 }).then(() => undefined),
+    };
+  }
 
-    const clients = await readV1Clients(exec);
+  const rest = resolveRest();
+  if (!rest) {
+    throw new Error(
+      [
+        "No credentials found. Provide EITHER of these in .env.local:",
+        "",
+        "  MIGRATION_DATABASE_URL=postgresql://postgres.<ref>:<pw>@<region>.pooler.supabase.com:5432/postgres",
+        "      (run `pnpm db:url` to set this safely)",
+        "",
+        "  SUPABASE_URL=https://<ref>.supabase.co",
+        "  SUPABASE_SERVICE_ROLE_KEY=<service role key>",
+        "      read-only path; enough for preflight, not for the migration",
+      ].join("\n"),
+    );
+  }
+
+  const host = new URL(rest.url).hostname;
+  announce(
+    "preflight — read-only scan",
+    { url: "", host, database: "postgres", env: "production",
+      label: `PRODUCTION — ${host} (PostgREST)` },
+    "no writes (service-role key)",
+  );
+
+  const total = await probeRest(rest);
+  console.log(`  PostgREST reachable — clients table reports ${total} rows.\n`);
+
+  return {
+    clients: await readV1ClientsViaRest(rest),
+    label: host,
+    close: async () => {},
+  };
+}
+
+async function main() {
+  const { clients, label: reportTarget, close } = await loadClients();
+
+  try {
     console.log(`  Read ${clients.length} client rows.\n`);
 
     const { log, tallies, mapped } = planBackfill(clients);
@@ -108,7 +168,7 @@ async function main() {
 
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const file = writeReport(`preflight-${stamp}`, {
-      target: target.label,
+      target: reportTarget,
       generatedAt: new Date().toISOString(),
       tallies,
       membership,
@@ -144,7 +204,7 @@ async function main() {
         `  Safe to apply 0004 and to run backfill --dry-run.\n`,
     );
   } finally {
-    await sql.end({ timeout: 5 });
+    await close();
   }
 }
 
