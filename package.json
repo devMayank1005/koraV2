@@ -15,7 +15,8 @@
     "migrate:preflight": "tsx scripts/migrate/preflight.ts",
     "migrate:backfill": "tsx scripts/migrate/backfill.ts",
     "migrate:verify": "tsx scripts/migrate/verify.ts",
-    "migrate:seed": "tsx scripts/migrate/seed-test-db.ts"
+    "migrate:seed": "tsx scripts/migrate/seed-test-db.ts",
+    "db:url": "node scripts/set-db-url.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
