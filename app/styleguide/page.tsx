@@ -10,7 +10,9 @@ import {
   Search,
   Paperclip,
 } from "lucide-react";
+import Image from "next/image";
 import { ThemeToggle, useTheme } from "@/components/theme";
+import { ContrastPanel } from "@/components/contrast-panel";
 import {
   STATUSES,
   STATUS_COLORS,
@@ -620,6 +622,60 @@ export default function StyleguidePage() {
               <span className="k-kbd">⌘K</span>
             </div>
           </div>
+        </Section>
+
+        {/* ---------------------------------------------------------------- */}
+        <Section
+          title="Contrast"
+          note="Measured live from the tokens currently rendering. Toggle the theme and the numbers change. Dark mode is the half the handoff never specified, so it is checked rather than assumed."
+        >
+          <ContrastPanel />
+          <p className="mt-3 text-k-small leading-[1.6] text-k-mute">
+            Two light-theme values sit below AA and are inherited from the
+            handoff rather than chosen here: the 10px eyebrow at 2.56:1, and the
+            form-control border at 1.41:1. Both are flagged for your decision —
+            dark mode does not reproduce either.
+          </p>
+        </Section>
+
+        {/* ---------------------------------------------------------------- */}
+        <Section
+          title="Logo"
+          note="The supplied PNG has a baked-in white background. On a light surface that is invisible; on Deep Blue or in dark mode it shows as a white slab, so it always sits in a white chip."
+        >
+          <div className="flex flex-wrap items-start gap-6">
+            <div>
+              <div className="k-eyebrow mb-2">On white — fine</div>
+              <div className="k-card p-4">
+                <Image src="/kognoz-logo.png" alt="Kognoz" width={158} height={47} />
+              </div>
+            </div>
+            <div>
+              <div className="k-eyebrow mb-2">On Deep Blue — in a white chip</div>
+              <div
+                className="rounded-k p-4"
+                style={{ background: "var(--k-ink-2)" }}
+              >
+                <span className="inline-block rounded-k bg-white px-3.5 py-2">
+                  <Image src="/kognoz-logo.png" alt="Kognoz" width={132} height={39} />
+                </span>
+              </div>
+            </div>
+            <div>
+              <div className="k-eyebrow mb-2">Never do this</div>
+              <div
+                className="rounded-k p-4"
+                style={{ background: "var(--k-ink-2)" }}
+              >
+                <Image src="/kognoz-logo.png" alt="Kognoz" width={132} height={39} />
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-k-small leading-[1.6] text-k-mute">
+            A transparent SVG would remove the constraint entirely and let the
+            mark sit directly on any surface. Worth requesting from whoever holds
+            the brand assets.
+          </p>
         </Section>
 
         <p className="pb-8 text-k-small text-k-mute-2">

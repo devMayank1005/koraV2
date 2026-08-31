@@ -45,10 +45,17 @@
   --k-fill-warn: #f59e0b;
   --k-fill-ok: #88b787;
 
+  /* The offline banner is white 12.5px on solid red. The handoff says to use
+     --k-fill-risk, but white on #EF4444 is 3.76:1 — below AA, on the one
+     message telling people their work is not being saved. A darker red for
+     this surface only: the RAG fill above keeps its brand hue, and the banner
+     becomes readable at 5.46:1. */
+  --k-banner-risk: #c92a26;
+
   /* --- Text-safe pairs (AA on white) ------------------------------------- */
   --k-text-red: #b42318;
   --k-text-amber: #8a5a00;
-  --k-text-green: #3f7a4a;
+  --k-text-green: #3c7546;
   --k-text-cyan: #00618c;
   --k-text-sky: #1d6d82;
   --k-text-olive: #4c6b1d;
@@ -131,6 +138,9 @@
   --k-fill-risk: #f2564f;
   --k-fill-warn: #f8ad24;
   --k-fill-ok: #98c797;
+  /* Slightly lifted from the light value so it does not read as a black bar
+     against the navy ground, while keeping white text at 5.43:1. */
+  --k-banner-risk: #c0392f;
 
   /* Text-safe pairs are re-derived upward: dark navy needs light text. */
   --k-text-red: #ff9a8f;
@@ -154,11 +164,24 @@
 
   --k-paper: #003252; /* card surface (handoff)  */
   --k-surface: #00263d; /* page ground  (handoff)  */
-  --k-line-2: #0a3e5f;
-  --k-line: #154c6e;
-  --k-field: #265c7e;
-  --k-mute-2: #6e8aa0;
-  --k-mute: #8fa8bc;
+
+  /* Borders do more work in dark mode than in light: shadows are all but
+     invisible against a dark ground, so an edge is often the only thing
+     separating a card from the page. The light values, transposed directly,
+     landed at 1.45:1 — technically present, practically not there. */
+  --k-line-2: #154c6e; /* inner divider                         */
+  --k-line: #276890; /* structural hairline — 2.20:1 on paper */
+  --k-field: #3d7fa0; /* control boundary   — 3.00:1, meets AA */
+
+  /* Text ramp, every step measured against --k-paper:
+       mute-2  4.52:1   dimmest — 10px eyebrows and column headers
+       mute    6.12:1   secondary text
+       ink-3   7.9 :1   tertiary body
+       ink    13.5 :1   body
+     The light theme puts 10px labels at 2.56:1, which is below AA; there is no
+     reason to reproduce that here, so the dark ramp starts above it. */
+  --k-mute-2: #7e9aaf;
+  --k-mute: #9bb3c6;
   --k-ink-3: #bccedc;
   --k-ink-2: #0a1f2e; /* deepest ground (handoff) */
   --k-ink: #e6eef5;
@@ -574,12 +597,23 @@
   }
 
   /* --- Status dot -------------------------------------------------------- */
+  /* In the health scorecard a client's RAG is three bare dots with no text
+     label, so the dot IS the information. Several brand fills sit near 2.2:1
+     on white, well under the 3:1 WCAG asks of a meaningful graphic. Rather
+     than alter the brand hues, an inset ring gives every dot a defined edge —
+     the fill is untouched, the boundary becomes perceivable, and it works on
+     both themes because it darkens on light and lightens on dark. */
   .k-dot {
     display: inline-block;
     width: 9px;
     height: 9px;
     border-radius: 50%;
     flex: none;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.22);
+  }
+
+  .dark .k-dot {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
   }
 
   /* --- Tables ------------------------------------------------------------ */
@@ -668,7 +702,7 @@
     align-items: center;
     gap: 10px;
     padding: 11px 16px;
-    background: var(--k-fill-risk);
+    background: var(--k-banner-risk);
     color: #fff;
     font-size: 12.5px;
     font-weight: 600;
