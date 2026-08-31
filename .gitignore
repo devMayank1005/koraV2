@@ -48,3 +48,6 @@ next-env.d.ts
 *.dump
 *.sql.gz
 *.backup.json
+
+# The example template is safe to commit; real env files are not.
+!.env.local.example
