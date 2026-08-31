@@ -1,0 +1,180 @@
+import type { Status, Role, MilestoneStatus, AmsEntryStatus } from "./types";
+
+/** Ported verbatim from the old app's js/core.js:12-21. Order is load-bearing:
+ *  it drives dropdown order and the Implementation phase grid's column order. */
+
+export const STATUSES: Status[] = [
+  "Not Started",
+  "In Progress",
+  "At Risk",
+  "On Hold — Internal",
+  "On Hold — Client",
+  "Pending Client",
+  "Under Review",
+  "Delayed",
+  "Cancelled",
+  "Completed",
+];
+
+export const ROLES: Role[] = ["viewer", "editor", "admin"];
+
+/** The nine fixed delivery phases. A module always has exactly these, in order. */
+export const PHASES = [
+  "BPU",
+  "BPU Signoff",
+  "CRP",
+  "CRP Signoff",
+  "UAT",
+  "UAT Signoff",
+  "Data Migration / Production Migration",
+  "Go Live",
+  "Hypercare",
+] as const;
+
+export type PhaseName = (typeof PHASES)[number];
+
+/** Completing one of these requires an update carrying an attachment. */
+export const SIGNOFF_PHASES: readonly string[] = [
+  "BPU Signoff",
+  "CRP Signoff",
+  "UAT Signoff",
+];
+
+export const MILESTONE_STATUSES: MilestoneStatus[] = [
+  "Pending",
+  "Achieved",
+  "Missed",
+];
+
+export const AMS_TYPES = [
+  "Bug Fix",
+  "Enhancement",
+  "Config Change",
+  "Support Ticket",
+  "Reporting",
+  "Training",
+  "Meeting",
+  "Consultation",
+] as const;
+
+export const AMS_QUERY_LEVELS = [
+  "L1 - Low",
+  "L2 - Medium",
+  "L3 - High",
+  "L4 - Critical",
+] as const;
+
+export const AMS_ENTRY_STATUSES: AmsEntryStatus[] = [
+  "Open",
+  "In Progress",
+  "Closed",
+];
+
+export const AMS_MODES = ["Online / Remote", "Offline / In-person"] as const;
+
+export const CURRENCIES = {
+  INR: { symbol: "₹", code: "INR" },
+  USD: { symbol: "$", code: "USD" },
+} as const;
+
+export const HOURS_PER_DAY = 8;
+
+/** Default capacity weights; overridden by the `capacity_weights` app setting. */
+export const DEFAULT_CAPACITY_WEIGHTS = {
+  module: 1,
+  pmo: 0.5,
+  ams: 0.25,
+  cap: 5,
+} as const;
+
+/**
+ * Status → colour, on the Kognoz palette.
+ *
+ * `fill` is for dots, bars, grid cells and borders. `text` is the darkened
+ * AA-safe pair for any text, and `tint` is the pill background. Never render
+ * `fill` as text — that rule is why these are triples rather than one hex.
+ * Replaces the old SHEX/SDOT/SRGB maps wholesale.
+ */
+export const STATUS_COLORS: Record<
+  Status,
+  { fill: string; text: string; tint: string }
+> = {
+  Completed: {
+    fill: "#88B787",
+    text: "var(--k-text-green)",
+    tint: "var(--k-tint-green)",
+  },
+  "In Progress": {
+    fill: "#009BDD",
+    text: "var(--k-text-cyan)",
+    tint: "var(--k-tint-cyan)",
+  },
+  "At Risk": {
+    fill: "#EF4444",
+    text: "var(--k-text-red)",
+    tint: "var(--k-tint-risk)",
+  },
+  Delayed: {
+    fill: "#F59E0B",
+    text: "var(--k-text-amber)",
+    tint: "var(--k-tint-warn)",
+  },
+  "Pending Client": {
+    fill: "#75A02F",
+    text: "var(--k-text-olive)",
+    tint: "var(--k-tint-olive)",
+  },
+  "Under Review": {
+    fill: "#43AFCD",
+    text: "var(--k-text-sky)",
+    tint: "var(--k-tint-sky)",
+  },
+  "On Hold — Internal": {
+    fill: "#939598",
+    text: "var(--k-text-grey)",
+    tint: "var(--k-tint-grey)",
+  },
+  "On Hold — Client": {
+    fill: "#939598",
+    text: "var(--k-text-grey)",
+    tint: "var(--k-tint-grey)",
+  },
+  Cancelled: {
+    fill: "#A1A1AA",
+    text: "var(--k-mute)",
+    tint: "var(--k-tint-neutral)",
+  },
+  "Not Started": {
+    fill: "#A1A1AA",
+    text: "var(--k-mute)",
+    tint: "var(--k-tint-neutral)",
+  },
+};
+
+export const RAG_COLORS = {
+  Red: { fill: "#EF4444", text: "var(--k-text-red)" },
+  Amber: { fill: "#F59E0B", text: "var(--k-text-amber)" },
+  Green: { fill: "#88B787", text: "var(--k-text-green)" },
+} as const;
+
+/** Query-level → colour, reusing the status triples (handoff §9). */
+export const QUERY_LEVEL_COLORS: Record<
+  string,
+  { fill: string; text: string; tint: string }
+> = {
+  "L4 - Critical": STATUS_COLORS["At Risk"],
+  "L3 - High": STATUS_COLORS["Delayed"],
+  "L2 - Medium": STATUS_COLORS["In Progress"],
+  "L1 - Low": STATUS_COLORS["On Hold — Internal"],
+};
+
+/** Deterministic avatar palette, drawn from the Kognoz supporting hues. */
+export const AVATAR_PALETTE = [
+  "#005184",
+  "#43AFCD",
+  "#55B09D",
+  "#75A02F",
+  "#009BDD",
+  "#88B787",
+  "#939598",
+] as const;

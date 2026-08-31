@@ -1,0 +1,742 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   KORA — Kognoz design system
+   Token values are from design_handoff_kora_reskin/_ds/…/colors_and_type.css
+   and the handoff README. Verified against kognoz_Iogo.png:
+     wordmark #005082 ≈ --k-primary #005184
+     tagline  #0099DA ≈ --k-cyan    #009BDD
+     mark tip #74A63F ≈ --k-olive   #75A02F
+
+   HARD RULES (handoff §0):
+     - Only two radii exist: 4px and 9999px. Chips/checkbox use 3px.
+     - Cards have NO shadow at rest; --k-shadow-s on hover only. No lift.
+     - Never use a `fill` colour as text. Use its `text-safe` pair.
+     - No emoji in UI. Icons are Lucide, stroke-width 1.5, currentColor.
+     - #71717A is the lightest text allowed on white.
+   ========================================================================== */
+
+/* Class-based dark mode — preserves the legacy `itk_dark` localStorage flag. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* --- Brand: primary ---------------------------------------------------- */
+  --k-primary: #005184;
+  --k-primary-hover: #003e66;
+  --k-primary-04: rgba(0, 81, 132, 0.04); /* table row hover              */
+  --k-primary-05: rgba(0, 81, 132, 0.05); /* rail selected, gate callout  */
+  --k-primary-06: rgba(0, 81, 132, 0.06); /* view-as banner, palette row  */
+  --k-primary-08: rgba(0, 81, 132, 0.08); /* active nav, chips, avatars   */
+  --k-primary-10: rgba(0, 81, 132, 0.1); /* type chips, tags             */
+  --k-primary-12: rgba(0, 81, 132, 0.12); /* focus ring                   */
+  --k-primary-18: rgba(0, 81, 132, 0.18); /* view-as border               */
+
+  /* --- Brand: supporting fills ------------------------------------------- */
+  --k-sky: #43afcd;
+  --k-teal: #55b09d;
+  --k-green: #88b787;
+  --k-cyan: #009bdd;
+  --k-olive: #75a02f;
+  --k-grey: #939598;
+  --k-gradient: linear-gradient(135deg, #009bdd 0%, #75a02f 100%);
+
+  /* --- Semantic fills (dots, bars, cells, borders — never text) ---------- */
+  --k-fill-risk: #ef4444;
+  --k-fill-warn: #f59e0b;
+  --k-fill-ok: #88b787;
+
+  /* --- Text-safe pairs (AA on white) ------------------------------------- */
+  --k-text-red: #b42318;
+  --k-text-amber: #8a5a00;
+  --k-text-green: #3f7a4a;
+  --k-text-cyan: #00618c;
+  --k-text-sky: #1d6d82;
+  --k-text-olive: #4c6b1d;
+  --k-text-teal: #2f6b5c;
+  --k-text-grey: #5b5d60;
+
+  /* --- Status tints (pill backgrounds, 12–18% alpha) --------------------- */
+  --k-tint-green: rgba(136, 183, 135, 0.18);
+  --k-tint-cyan: rgba(0, 155, 221, 0.12);
+  --k-tint-risk: rgba(239, 68, 68, 0.12);
+  --k-tint-warn: rgba(245, 158, 11, 0.14);
+  --k-tint-olive: rgba(117, 160, 47, 0.14);
+  --k-tint-sky: rgba(67, 175, 205, 0.14);
+  --k-tint-teal: rgba(85, 176, 157, 0.16);
+  --k-tint-grey: rgba(147, 149, 152, 0.16);
+  --k-tint-neutral: rgba(161, 161, 170, 0.14);
+
+  /* --- Surfaces & ink ---------------------------------------------------- */
+  --k-paper: #ffffff; /* cards, sidebar          */
+  --k-surface: #fafafa; /* page ground, table head */
+  --k-line-2: #f4f4f5; /* inner divider           */
+  --k-line: #e4e4e7; /* structural hairline     */
+  --k-field: #d9d9d9; /* form control border     */
+  --k-mute-2: #a1a1aa; /* lightest label          */
+  --k-mute: #71717a; /* secondary text          */
+  --k-ink-3: #3f3f46; /* tertiary body text      */
+  --k-ink-2: #003252; /* deep brand ground       */
+  --k-ink: #212121; /* body ink                */
+
+  /* --- Radii (only these exist) ------------------------------------------ */
+  --k-radius: 4px;
+  --k-radius-chip: 3px;
+  --k-pill: 9999px;
+
+  /* --- Elevation --------------------------------------------------------- */
+  --k-shadow-s: 0 1px 2px rgba(33, 33, 33, 0.04);
+  --k-shadow: 0 2px 8px rgba(33, 33, 33, 0.06);
+  --k-shadow-m: 0 8px 24px rgba(33, 33, 33, 0.08);
+  --k-shadow-l: 0 16px 48px rgba(33, 33, 33, 0.12);
+  --k-focus-ring: 0 0 0 3px var(--k-primary-12);
+
+  /* --- Motion ------------------------------------------------------------ */
+  --k-t-fast: 120ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  --k-t: 200ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  --k-t-enter: 700ms cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* --- Layout ------------------------------------------------------------ */
+  --k-sidebar: 232px;
+  --k-sidebar-collapsed: 56px;
+  --k-sidebar-mobile: 240px;
+  --k-rail: 268px;
+  --k-side-panel: 300px;
+}
+
+/* --------------------------------------------------------------------------
+   Dark mode.
+   The handoff specifies only four values (primary #7FC4E8 and the three
+   navy grounds). Everything else below is DERIVED and awaiting design review
+   — see the plan's "dark mode" note. Grounds are navy, not neutral grey.
+   -------------------------------------------------------------------------- */
+.dark {
+  --k-primary: #7fc4e8;
+  --k-primary-hover: #a3d6f0;
+  --k-primary-04: rgba(127, 196, 232, 0.06);
+  --k-primary-05: rgba(127, 196, 232, 0.08);
+  --k-primary-06: rgba(127, 196, 232, 0.1);
+  --k-primary-08: rgba(127, 196, 232, 0.14);
+  --k-primary-10: rgba(127, 196, 232, 0.16);
+  --k-primary-12: rgba(127, 196, 232, 0.22);
+  --k-primary-18: rgba(127, 196, 232, 0.3);
+
+  /* Fills keep their identity — they are graphical, not text. */
+  --k-sky: #5cc0dc;
+  --k-teal: #66c2ae;
+  --k-green: #98c797;
+  --k-cyan: #2bb3ee;
+  --k-olive: #8db93f;
+  --k-grey: #a2a4a7;
+
+  --k-fill-risk: #f2564f;
+  --k-fill-warn: #f8ad24;
+  --k-fill-ok: #98c797;
+
+  /* Text-safe pairs are re-derived upward: dark navy needs light text. */
+  --k-text-red: #ff9a8f;
+  --k-text-amber: #fbbf24;
+  --k-text-green: #a8d5a2;
+  --k-text-cyan: #67c8f0;
+  --k-text-sky: #7fc4e8;
+  --k-text-olive: #b4d97a;
+  --k-text-teal: #7fd4c1;
+  --k-text-grey: #a9b6bf;
+
+  --k-tint-green: rgba(136, 183, 135, 0.2);
+  --k-tint-cyan: rgba(0, 155, 221, 0.2);
+  --k-tint-risk: rgba(239, 68, 68, 0.2);
+  --k-tint-warn: rgba(245, 158, 11, 0.2);
+  --k-tint-olive: rgba(117, 160, 47, 0.2);
+  --k-tint-sky: rgba(67, 175, 205, 0.2);
+  --k-tint-teal: rgba(85, 176, 157, 0.22);
+  --k-tint-grey: rgba(147, 149, 152, 0.24);
+  --k-tint-neutral: rgba(161, 161, 170, 0.2);
+
+  --k-paper: #003252; /* card surface (handoff)  */
+  --k-surface: #00263d; /* page ground  (handoff)  */
+  --k-line-2: #0a3e5f;
+  --k-line: #154c6e;
+  --k-field: #265c7e;
+  --k-mute-2: #6e8aa0;
+  --k-mute: #8fa8bc;
+  --k-ink-3: #bccedc;
+  --k-ink-2: #0a1f2e; /* deepest ground (handoff) */
+  --k-ink: #e6eef5;
+
+  --k-shadow-s: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --k-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  --k-shadow-m: 0 8px 24px rgba(0, 0, 0, 0.44);
+  --k-shadow-l: 0 16px 48px rgba(0, 0, 0, 0.52);
+}
+
+/* --------------------------------------------------------------------------
+   Expose tokens to Tailwind utilities: bg-k-primary, text-k-mute, border-k-line
+   -------------------------------------------------------------------------- */
+@theme inline {
+  --color-k-primary: var(--k-primary);
+  --color-k-primary-hover: var(--k-primary-hover);
+  --color-k-sky: var(--k-sky);
+  --color-k-teal: var(--k-teal);
+  --color-k-green: var(--k-green);
+  --color-k-cyan: var(--k-cyan);
+  --color-k-olive: var(--k-olive);
+  --color-k-grey: var(--k-grey);
+
+  --color-k-risk: var(--k-fill-risk);
+  --color-k-warn: var(--k-fill-warn);
+  --color-k-ok: var(--k-fill-ok);
+
+  --color-k-text-red: var(--k-text-red);
+  --color-k-text-amber: var(--k-text-amber);
+  --color-k-text-green: var(--k-text-green);
+  --color-k-text-cyan: var(--k-text-cyan);
+  --color-k-text-sky: var(--k-text-sky);
+  --color-k-text-olive: var(--k-text-olive);
+  --color-k-text-teal: var(--k-text-teal);
+  --color-k-text-grey: var(--k-text-grey);
+
+  --color-k-paper: var(--k-paper);
+  --color-k-surface: var(--k-surface);
+  --color-k-line: var(--k-line);
+  --color-k-line-2: var(--k-line-2);
+  --color-k-field: var(--k-field);
+  --color-k-mute: var(--k-mute);
+  --color-k-mute-2: var(--k-mute-2);
+  --color-k-ink: var(--k-ink);
+  --color-k-ink-2: var(--k-ink-2);
+  --color-k-ink-3: var(--k-ink-3);
+
+  /* Fonts — bound to next/font variables in app/layout.tsx */
+  --font-k-head: var(--font-k-head), Calibri, Carlito, "Open Sans", system-ui,
+    sans-serif;
+  --font-k-body: var(--font-k-body), "Open Sans", system-ui, sans-serif;
+  --font-k-mono: var(--font-k-mono), "JetBrains Mono", ui-monospace, monospace;
+
+  /* Dense app type scale (handoff), NOT the marketing scale. */
+  --text-k-login: 38px;
+  --text-k-h1: 26px;
+  --text-k-h2: 22px;
+  --text-k-h3: 20px;
+  --text-k-h4: 18px;
+  --text-k-card: 14px;
+  --text-k-nav: 13px;
+  --text-k-body: 12.5px;
+  --text-k-meta: 12px;
+  --text-k-small: 11.5px;
+  --text-k-label: 11px;
+  --text-k-pill: 10.5px;
+  --text-k-eyebrow: 10px;
+  --text-k-micro: 9px;
+
+  --radius-k: var(--k-radius);
+  --radius-k-chip: var(--k-radius-chip);
+
+  --shadow-k-s: var(--k-shadow-s);
+  --shadow-k: var(--k-shadow);
+  --shadow-k-m: var(--k-shadow-m);
+  --shadow-k-l: var(--k-shadow-l);
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--k-surface);
+    color: var(--k-ink);
+    font-family: var(--font-k-body), "Open Sans", system-ui, sans-serif;
+    font-size: 12.5px;
+    line-height: 1.5;
+    letter-spacing: -0.005em;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Headings and every large numeral use the Kognoz head face. */
+  h1,
+  h2,
+  h3,
+  h4,
+  kbd,
+  .k-num {
+    font-family: var(--font-k-head), Calibri, Carlito, "Open Sans", system-ui,
+      sans-serif;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--k-primary);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--k-primary-18);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Components — the `k-` layer. Single naming convention for the app.
+   The design system's unprefixed .h1/.body/.caption are deliberately NOT
+   shipped: they collide with Tailwind.
+   -------------------------------------------------------------------------- */
+@layer components {
+  /* --- Type helpers ------------------------------------------------------ */
+  .k-num {
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .k-mono {
+    font-family: var(--font-k-mono), "JetBrains Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Section label above a card's contents. */
+  .k-eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--k-mute-2);
+  }
+
+  .k-page-title {
+    font-family: var(--font-k-head), Calibri, Carlito, sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--k-primary);
+    margin: 0;
+  }
+
+  /* --- Surface ----------------------------------------------------------- */
+  .k-card {
+    background: var(--k-paper);
+    border: 1px solid var(--k-line);
+    border-radius: var(--k-radius);
+  }
+
+  /* Cards are flat at rest; hover raises by the smallest step, never lifts. */
+  .k-card-hover:hover {
+    box-shadow: var(--k-shadow-s);
+  }
+
+  .k-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 9px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--k-line-2);
+  }
+
+  .k-card-title {
+    font-family: var(--font-k-head), Calibri, Carlito, sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--k-ink);
+  }
+
+  /* --- Buttons ----------------------------------------------------------- */
+  .k-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--k-radius);
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color var(--k-t-fast),
+      border-color var(--k-t-fast),
+      color var(--k-t-fast),
+      transform 80ms ease;
+  }
+
+  .k-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .k-btn:not(:disabled):active {
+    transform: scale(0.98);
+  }
+
+  .k-btn-primary {
+    background: var(--k-primary);
+    color: #fff;
+    border: 1px solid var(--k-primary);
+  }
+
+  .dark .k-btn-primary {
+    color: var(--k-ink-2);
+  }
+
+  .k-btn-primary:not(:disabled):hover {
+    background: var(--k-primary-hover);
+    border-color: var(--k-primary-hover);
+  }
+
+  .k-btn-outline {
+    background: transparent;
+    color: var(--k-ink-3);
+    border: 1px solid var(--k-field);
+    font-weight: 400;
+  }
+
+  .k-btn-outline:not(:disabled):hover {
+    border-color: var(--k-primary);
+    color: var(--k-primary);
+  }
+
+  .k-btn-ghost {
+    background: transparent;
+    color: var(--k-mute);
+    border: 1px solid transparent;
+    font-weight: 400;
+  }
+
+  .k-btn-ghost:not(:disabled):hover {
+    background: var(--k-line-2);
+  }
+
+  /* Text-only affordance: "+ Add", "View full log →" */
+  .k-btn-link {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--k-primary);
+    cursor: pointer;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  .k-btn-link:hover {
+    color: var(--k-primary-hover);
+    text-decoration: underline;
+  }
+
+  .k-btn-sm {
+    height: 30px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+  .k-btn-md {
+    height: 34px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+  .k-btn-lg {
+    height: 40px;
+    padding: 0 16px;
+    font-size: 14px;
+    font-family: var(--font-k-head), Calibri, Carlito, sans-serif;
+    letter-spacing: 0.02em;
+  }
+
+  /* --- Form controls ----------------------------------------------------- */
+  .k-input {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--k-field);
+    border-radius: var(--k-radius);
+    background: var(--k-paper);
+    color: var(--k-ink);
+    font-size: 14px;
+    transition:
+      border-color var(--k-t-fast),
+      box-shadow var(--k-t-fast);
+  }
+
+  .k-input::placeholder {
+    color: var(--k-mute-2);
+  }
+
+  .k-input:focus {
+    outline: none;
+    border-color: var(--k-primary);
+    box-shadow: var(--k-focus-ring);
+  }
+
+  /* Compact filter/search control that sits on --k-surface. */
+  .k-input-sm {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-color: var(--k-line);
+    background: var(--k-surface);
+  }
+
+  .k-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--k-mute);
+  }
+
+  /* Read-mode value box used across record cards. */
+  .k-field {
+    display: flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--k-line);
+    border-radius: var(--k-radius);
+    background: var(--k-surface);
+    font-size: 12.5px;
+    color: var(--k-ink);
+  }
+
+  /* --- Pills ------------------------------------------------------------- */
+  .k-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border-radius: var(--k-pill);
+    font-size: 10.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    /* No border on status pills — handoff §1. */
+  }
+
+  .k-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: var(--k-pill);
+    border: 1px solid var(--k-line);
+    background: var(--k-paper);
+    color: var(--k-mute);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      border-color var(--k-t-fast),
+      background-color var(--k-t-fast),
+      color var(--k-t-fast);
+  }
+
+  .k-chip:hover {
+    border-color: var(--k-primary);
+  }
+
+  .k-chip[data-active="true"] {
+    background: var(--k-primary);
+    border-color: var(--k-primary);
+    color: #fff;
+  }
+
+  .dark .k-chip[data-active="true"] {
+    color: var(--k-ink-2);
+  }
+
+  .k-chip-sm {
+    padding: 3px 10px;
+    font-size: 11px;
+  }
+
+  /* Mono type-chip: INT / MOD / AMS / USR / PDF / XLSX */
+  .k-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 6px;
+    border-radius: var(--k-radius-chip);
+    font-family: var(--font-k-mono), ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  /* Keyboard hint chip: ⌘K, esc */
+  .k-kbd {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 4px;
+    border: 1px solid var(--k-line);
+    border-radius: var(--k-radius-chip);
+    background: var(--k-paper);
+    font-family: var(--font-k-mono), ui-monospace, monospace;
+    font-size: 10px;
+    color: var(--k-mute-2);
+  }
+
+  /* --- Status dot -------------------------------------------------------- */
+  .k-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  /* --- Tables ------------------------------------------------------------ */
+  .k-thead {
+    padding: 9px 18px;
+    background: var(--k-surface);
+    border-bottom: 1px solid var(--k-line);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--k-mute);
+  }
+
+  /* Header variant for cards that keep a white head. */
+  .k-thead-plain {
+    padding: 8px 18px;
+    background: transparent;
+    border-bottom: 1px solid var(--k-line-2);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--k-mute-2);
+  }
+
+  .k-row {
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--k-line-2);
+    font-size: 12.5px;
+    transition: background-color var(--k-t-fast);
+  }
+
+  .k-row-hover:hover {
+    background: var(--k-primary-04);
+  }
+
+  /* --- Nav --------------------------------------------------------------- */
+  .k-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: var(--k-radius);
+    font-size: 13px;
+    color: var(--k-ink-3);
+    transition:
+      background-color var(--k-t-fast),
+      color var(--k-t-fast);
+  }
+
+  .k-nav-item:hover {
+    background: var(--k-line-2);
+  }
+
+  /* Active nav is tint + colour + weight. No left bar, no dark fill. */
+  .k-nav-item[data-active="true"] {
+    background: var(--k-primary-08);
+    color: var(--k-primary);
+    font-weight: 600;
+  }
+
+  .k-nav-group {
+    padding: 12px 10px 4px;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--k-mute-2);
+  }
+
+  /* --- Banners & callouts ------------------------------------------------ */
+  .k-callout {
+    padding: 12px 14px;
+    border-radius: var(--k-radius);
+    border-left: 3px solid var(--k-primary);
+    background: var(--k-primary-05);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--k-ink-3);
+  }
+
+  .k-banner-offline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 16px;
+    background: var(--k-fill-risk);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  .k-banner-viewas {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 16px;
+    border: 1px solid var(--k-primary-18);
+    border-radius: var(--k-radius);
+    background: var(--k-primary-06);
+    color: var(--k-primary);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  /* Optimistic-concurrency 409 card. */
+  .k-conflict {
+    padding: 14px 16px;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-left: 3px solid var(--k-fill-warn);
+    border-radius: var(--k-radius);
+    background: rgba(245, 158, 11, 0.06);
+  }
+
+  /* --- Feedback ---------------------------------------------------------- */
+  .k-skeleton {
+    border-radius: var(--k-radius);
+    background: var(--k-line-2);
+    animation: k-shimmer 1.4s linear infinite;
+  }
+
+  .k-spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2.5px solid var(--k-line);
+    border-top-color: var(--k-primary);
+    animation: k-spin 0.7s linear infinite;
+  }
+}
+
+@keyframes k-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes k-shimmer {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
