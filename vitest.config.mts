@@ -14,5 +14,9 @@ export default defineConfig({
     // (environmentMatchGlobs was removed in Vitest 4).
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    // bcrypt runs at cost 12 in the auth tests, by design — the dummy-hash
+    // comparison that equalises login timing is genuinely expensive.
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 });

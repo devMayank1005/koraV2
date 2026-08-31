@@ -1,0 +1,126 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { getDb, type Db } from "@/lib/db/client";
+import { readSessionCookie } from "@/lib/auth/cookies";
+import { validateSession, type SessionUser } from "@/lib/auth/session";
+import { clientIp, userAgent } from "./ip";
+import { AppError, errorResponse, forbidden, unauthorized } from "./errors";
+
+/**
+ * The wrapper every authenticated route uses.
+ *
+ * Centralising this is what keeps authorisation from drifting: in the old app
+ * each of the ten functions re-derived its own role check, and the ones that
+ * were missed are exactly where the gaps turned up — `ops?op=settings` had no
+ * role check at all and leaked the digest recipient list to any viewer.
+ */
+
+export type Role = "viewer" | "editor" | "admin";
+
+const RANK: Record<Role, number> = { viewer: 1, editor: 2, admin: 3 };
+
+export interface Ctx {
+  db: Db;
+  user: SessionUser;
+  ip: string | null;
+  userAgent: string | null;
+  req: NextRequest;
+}
+
+export interface AuthOptions {
+  /** Minimum role. Omit to allow any signed-in user. */
+  role?: Role;
+}
+
+export function withAuth(
+  opts: AuthOptions,
+  handler: (ctx: Ctx) => Promise<NextResponse>,
+) {
+  return async (req: NextRequest): Promise<NextResponse> => {
+    const context = `${req.method} ${new URL(req.url).pathname}`;
+    try {
+      const db = getDb();
+      const token = await readSessionCookie();
+      const session = await validateSession(db, token);
+
+      if (!session.valid) {
+        // The client maps the reason to a message; it reveals nothing an
+        // attacker does not already know, since they hold the token.
+        throw unauthorized("Not signed in", { reason: session.reason });
+      }
+
+      const required = opts.role;
+      if (required && RANK[session.user.role as Role] < RANK[required]) {
+        // Note this uses the role read fresh from the database in
+        // validateSession, never the one embedded in the token, so a
+        // demotion takes effect on the very next request.
+        throw forbidden();
+      }
+
+      // Same-origin guard for mutations. SameSite=Lax already blocks the
+      // cross-site form POSTs CSRF relies on; this is the cheap second layer.
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        assertSameOrigin(req);
+      }
+
+      return await handler({
+        db,
+        user: session.user,
+        ip: clientIp(req.headers),
+        userAgent: userAgent(req.headers),
+        req,
+      });
+    } catch (err) {
+      return errorResponse(err, context);
+    }
+  };
+}
+
+/** Public routes still want the db + client info, without a session. */
+export function withPublic(
+  handler: (
+    ctx: Omit<Ctx, "user"> & { user: null },
+  ) => Promise<NextResponse>,
+) {
+  return async (req: NextRequest): Promise<NextResponse> => {
+    const context = `${req.method} ${new URL(req.url).pathname}`;
+    try {
+      return await handler({
+        db: getDb(),
+        user: null,
+        ip: clientIp(req.headers),
+        userAgent: userAgent(req.headers),
+        req,
+      });
+    } catch (err) {
+      return errorResponse(err, context);
+    }
+  };
+}
+
+/**
+ * Rejects a mutation that did not originate from our own origin.
+ *
+ * `Sec-Fetch-Site` is set by the browser and cannot be spoofed by page script.
+ * Requests with neither header (curl, server-to-server) are allowed through —
+ * they carry no ambient cookie, so they are not the CSRF case.
+ */
+function assertSameOrigin(req: NextRequest): void {
+  const site = req.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") {
+    throw new AppError(403, "Cross-site request blocked");
+  }
+
+  const origin = req.headers.get("origin");
+  if (origin) {
+    const expected = process.env.KORA_APP_URL;
+    const host = req.headers.get("host");
+    const ok =
+      (expected && origin === expected.replace(/\/+$/, "")) ||
+      (host && new URL(origin).host === host);
+    if (!ok) throw new AppError(403, "Cross-site request blocked");
+  }
+}
+
+export function json(body: unknown, init?: ResponseInit): NextResponse {
+  return NextResponse.json(body, init);
+}

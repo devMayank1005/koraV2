@@ -7,6 +7,7 @@ import {
   date,
   jsonb,
   integer,
+  bigserial,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -281,11 +282,11 @@ export const users = pgTable(
   {
     id: text("id").primaryKey(),
     username: text("username").notNull(),
-    name: text("name"),
-    email: text("email"),
-    role: text("role").notNull(),
+    name: text("name").notNull(),
+    email: text("email").default(""),
+    role: text("role").notNull().default("viewer"),
     /** bcrypt ($2a/$2b/$2y) or a legacy SHA-256 hex digest, rehashed on login. */
-    passwordHash: text("password_hash"),
+    passwordHash: text("password_hash").notNull(),
     tokenVersion: integer("token_version").notNull().default(0),
     failedAttempts: integer("failed_attempts").notNull().default(0),
     lockoutLevel: integer("lockout_level").notNull().default(0),
@@ -306,14 +307,16 @@ export const users = pgTable(
 export const auditLog = pgTable(
   "audit_log",
   {
-    id: text("id").primaryKey(),
+    // bigserial — verified against the live database. The writer never sends
+    // id or ts, so declaring the default here keeps them out of insert types.
+    id: bigserial("id", { mode: "number" }).primaryKey(),
     ts: timestamp("ts", { withTimezone: true, mode: "string" })
       .notNull()
       .defaultNow(),
     actorId: text("actor_id"),
     username: text("username"),
     role: text("role"),
-    action: text("action"),
+    action: text("action").notNull(),
     entity: text("entity"),
     screen: text("screen"),
     ip: text("ip"),
@@ -329,21 +332,25 @@ export const auditLog = pgTable(
 export const loginIpThrottle = pgTable("login_ip_throttle", {
   ip: text("ip").primaryKey(),
   attemptCount: integer("attempt_count").notNull().default(0),
-  windowStart: timestamp("window_start", {
-    withTimezone: true,
-    mode: "string",
-  }),
+  windowStart: timestamp("window_start", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
   lockedUntil: timestamp("locked_until", {
     withTimezone: true,
     mode: "string",
   }),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
 });
 
 export const portfolioSnapshots = pgTable("portfolio_snapshots", {
+  // Surrogate key; (snapshot_date, client_id) carries a UNIQUE constraint and
+  // is what api/snapshot.js upserts on — it is not the primary key.
+  id: bigserial("id", { mode: "number" }).primaryKey(),
   snapshotDate: date("snapshot_date").notNull(),
   clientId: text("client_id").notNull(),
-  clientName: text("client_name"),
+  clientName: text("client_name").notNull(),
   integTotal: integer("integ_total"),
   integAtRisk: integer("integ_at_risk"),
   integInProgress: integer("integ_in_progress"),
@@ -357,12 +364,17 @@ export const portfolioSnapshots = pgTable("portfolio_snapshots", {
   /** Financial — stripped from the response for non-admins. */
   amsHoursMonth: numeric("ams_hours_month"),
   overallRag: text("overall_rag"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
 });
 
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
-  value: jsonb("value"),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
   updatedBy: text("updated_by"),
 });
 

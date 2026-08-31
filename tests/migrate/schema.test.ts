@@ -179,9 +179,13 @@ describe("migration SQL applies and constrains correctly", () => {
 
   describe("users: case-insensitive unique username (migration 0005)", () => {
     it("rejects usernames differing only by case", async () => {
-      await db.exec(`insert into users (id, username, role) values ('u1', 'meera', 'admin')`);
+      // name and password_hash are NOT NULL in the real schema — verified
+      // against production, and originally guessed wrong here.
+      await db.exec(`insert into users (id, username, name, password_hash, role)
+                     values ('u1', 'meera', 'Meera R', 'x', 'admin')`);
       await expect(
-        db.exec(`insert into users (id, username, role) values ('u2', 'Meera', 'editor')`),
+        db.exec(`insert into users (id, username, name, password_hash, role)
+                 values ('u2', 'Meera', 'Meera R', 'x', 'editor')`),
       ).rejects.toThrow();
     });
   });
