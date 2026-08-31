@@ -14,7 +14,8 @@
     "db:check": "drizzle-kit check",
     "migrate:preflight": "tsx scripts/migrate/preflight.ts",
     "migrate:backfill": "tsx scripts/migrate/backfill.ts",
-    "migrate:verify": "tsx scripts/migrate/verify.ts"
+    "migrate:verify": "tsx scripts/migrate/verify.ts",
+    "migrate:seed": "tsx scripts/migrate/seed-test-db.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -38,6 +39,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
