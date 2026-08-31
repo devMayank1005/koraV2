@@ -179,6 +179,31 @@ describe("migration pipeline, end to end", () => {
       expect(blob).toContain("sharepoint.example.com");
     });
 
+    it("stores activity logs as jsonb ARRAYS, not double-encoded strings", async () => {
+      // Regression. The first version stringified jsonb params itself, and
+      // postgres.js — which serializes json-bound params on its own — encoded
+      // that string again, storing a jsonb scalar string instead of an array.
+      // It still parsed as valid JSON, so a naive round-trip check passed while
+      // every activity log in the database was the wrong shape. Caught only by
+      // running the real driver; PGlite does not double-encode.
+      for (const [table, column] of [
+        ["integrations_v2", "activity_log"],
+        ["phases_v2", "activity_log"],
+        ["ams_work_log_v2", "edit_history"],
+      ]) {
+        const rows = await exec.query<{ n: string; kinds: string | null }>(
+          `select count(*)::text as n,
+                  string_agg(distinct jsonb_typeof(${column}), ',') as kinds
+           from ${table}
+           where jsonb_typeof(${column}) is distinct from 'array'`,
+        );
+        expect(
+          Number(rows[0].n),
+          `${table}.${column} holds ${rows[0].kinds} instead of array`,
+        ).toBe(0);
+      }
+    });
+
     it("preserves v1 timestamps instead of stamping now()", async () => {
       const [row] = await exec.query<{ created_at: string; updated_at: string }>(
         `select to_char(created_at at time zone 'UTC','YYYY-MM-DD') as created_at,

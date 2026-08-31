@@ -94,21 +94,31 @@ async function main() {
 
     // One transaction: either v2 is fully rebuilt or it is untouched. There is
     // deliberately no partially-migrated state to reason about.
+    //
+    // Uses sql.begin rather than issuing BEGIN/COMMIT as statements, because
+    // postgres.js pools connections and refuses the latter outright: a raw
+    // BEGIN can land on a different connection from the statements that follow,
+    // which would silently produce a half-applied migration running outside any
+    // transaction at all. The callback's return value is committed; anything
+    // thrown rolls the whole thing back.
     console.log("  Beginning transaction…");
-    await exec.exec("begin");
 
     try {
-      const written = await applyBackfill(exec, plan);
-      const check = await assertTallies(exec, plan.tallies);
+      const written = await sql.begin(async (tx) => {
+        const txExec = fromPostgresJs(tx as unknown as typeof sql);
+        const result = await applyBackfill(txExec, plan);
+        const check = await assertTallies(txExec, plan.tallies);
 
-      if (!check.ok) {
-        // Rolls back rather than reporting success on a partial write.
-        throw new Error(
-          `tally mismatch after insert:\n    ${check.diff.join("\n    ")}`,
-        );
-      }
+        if (!check.ok) {
+          // Throwing here rolls back, rather than reporting success on a
+          // partial write.
+          throw new Error(
+            `tally mismatch after insert:\n    ${check.diff.join("\n    ")}`,
+          );
+        }
+        return result;
+      });
 
-      await exec.exec("commit");
       console.log("  Committed.\n");
 
       console.log("  Written");
@@ -132,7 +142,7 @@ async function main() {
           `  NEXT: run \`pnpm migrate:verify\`. It must pass before cutover.\n`,
       );
     } catch (err) {
-      await exec.exec("rollback");
+      // sql.begin has already rolled back by the time we get here.
       console.error(
         `\n  ROLLED BACK — v2 is unchanged, v1 was never touched.\n  ${
           err instanceof Error ? err.message : err

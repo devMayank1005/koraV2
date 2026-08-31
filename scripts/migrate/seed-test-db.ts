@@ -80,10 +80,14 @@ async function main() {
           description: c.description ?? "",
           created_at: c.created_at,
           updated_at: c.updated_at,
-          integrations: JSON.stringify(c.integrations ?? []),
-          // Preserve the null-sentinel: absent key stays SQL NULL.
-          modules: c.modules === undefined ? null : JSON.stringify(c.modules),
-          work_log: c.work_log === undefined ? null : JSON.stringify(c.work_log),
+          // Pass the real arrays. postgres.js serializes them into proper
+          // jsonb; JSON.stringify-ing first would store a jsonb *scalar
+          // string* instead of an array — data that reads back fine through a
+          // parser but is not shaped like anything the live database holds.
+          integrations: sql.json((c.integrations ?? []) as never),
+          // Preserve the null-sentinel: an absent key stays SQL NULL.
+          modules: c.modules === undefined ? null : sql.json(c.modules as never),
+          work_log: c.work_log === undefined ? null : sql.json(c.work_log as never),
           man_day_rate: c.man_day_rate ?? null,
           total_available_hours: c.total_available_hours ?? null,
           currency: c.currency ?? "INR",

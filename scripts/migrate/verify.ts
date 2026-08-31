@@ -95,6 +95,32 @@ async function structural(exec: Executor): Promise<Failure[]> {
     }
   }
 
+  // Every jsonb activity column must hold an ARRAY, not a scalar string.
+  //
+  // This exists because a double-encoded value still parses as valid JSON, so
+  // it survives a naive round-trip check while being the wrong shape for every
+  // query the app runs. It is a driver-serialization mistake that is invisible
+  // until something tries `jsonb_array_length` in production.
+  for (const [table, column] of [
+    ["integrations_v2", "activity_log"],
+    ["phases_v2", "activity_log"],
+    ["ams_work_log_v2", "edit_history"],
+  ]) {
+    const [r] = await exec.query<{ n: string; kinds: string }>(`
+      select count(*)::text as n,
+             coalesce(string_agg(distinct jsonb_typeof(${column}), ','), 'none') as kinds
+      from ${table}
+      where jsonb_typeof(${column}) is distinct from 'array'
+    `);
+    if (Number(r.n) > 0) {
+      failures.push({
+        leg: "structural",
+        location: `${table}.${column}`,
+        detail: `${r.n} rows are not a jsonb array (found: ${r.kinds}) — likely double-encoded`,
+      });
+    }
+  }
+
   // Orphans: a milestone must agree with its integration about the client.
   const [orphan] = await exec.query<{ n: string }>(`
     select count(*)::text as n
@@ -125,14 +151,31 @@ async function structural(exec: Executor): Promise<Failure[]> {
      union all select activity_log from phases_v2`,
   );
   const att = countAttachments(attachRows.map((r) => r.activity_log));
-  if (att.total !== att.withPath) {
-    failures.push({ leg: "structural", location: "attachments",
-      detail: `${att.total - att.withPath} of ${att.total} lack a storagePath` });
+
+  // Only an attachment we could have resolved and didn't is a defect. A link
+  // to somewhere outside our bucket has no storage path by definition; those
+  // are preserved verbatim and reported by preflight as warnings.
+  if (att.unresolvedInternal > 0) {
+    failures.push({
+      leg: "structural",
+      location: "attachments",
+      detail: `${att.unresolvedInternal} attachment(s) point at our bucket but have no storagePath`,
+    });
+  }
+
+  // A stored signed URL is stale by definition — the read path signs fresh
+  // from storagePath — so any survivor means normalization was skipped.
+  if (att.withPath > 0 && att.withUrl > att.external) {
+    failures.push({
+      leg: "structural",
+      location: "attachments",
+      detail: `${att.withUrl - att.external} attachment(s) still carry a stored signed URL`,
+    });
   }
 
   console.log(
-    `\n    attachments: ${att.withPath}/${att.total} with a storagePath, ` +
-      `${att.withUrl} still carrying a url`,
+    `\n    attachments: ${att.total} total — ${att.withPath} with a storagePath, ` +
+      `${att.external} external (kept as-is), ${att.unresolvedInternal} unresolved`,
   );
 
   return failures;

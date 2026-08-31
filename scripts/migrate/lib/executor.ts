@@ -23,13 +23,35 @@ export interface Executor {
   exec(text: string): Promise<void>;
 }
 
+/**
+ * Marks a parameter destined for a json/jsonb column.
+ *
+ * The two drivers need opposite things here, and getting it wrong is silent:
+ *
+ *   postgres.js inspects the statement's parameter types and JSON-serializes
+ *   the value itself. Hand it a pre-stringified array and it stringifies the
+ *   string, storing a jsonb *scalar string* rather than an array.
+ *
+ *   PGlite does no such serialization and needs the JSON text.
+ *
+ * Either mistake produces a column that still reads back as "valid JSON" via a
+ * parser, so it survives naive round-trip checks while being the wrong shape
+ * for every query the application will run against it. Wrapping the value makes
+ * the intent explicit and lets each adapter do its own thing.
+ */
+export class JsonParam {
+  constructor(readonly value: unknown) {}
+}
+
 /** postgres.js adapter — used by the CLI against a real server. */
 export function fromPostgresJs(sql: Sql): Executor {
   return {
     async query<T>(text: string, params: unknown[] = []) {
-      // postgres.js narrows `unsafe` params to its own serializable union;
-      // everything we pass is already a primitive or a JSON string.
-      const rows = await sql.unsafe(text, params as never[]);
+      // Hand postgres.js the raw value and let it serialize exactly once.
+      const mapped = params.map((p) =>
+        p instanceof JsonParam ? p.value : p,
+      );
+      const rows = await sql.unsafe(text, mapped as never[]);
       return rows as unknown as T[];
     },
     async exec(text: string) {
@@ -45,7 +67,11 @@ export function fromPglite(db: {
 }): Executor {
   return {
     async query<T>(text: string, params: unknown[] = []) {
-      const res = await db.query(text, params);
+      // PGlite wants the JSON text; it does not serialize objects itself.
+      const mapped = params.map((p) =>
+        p instanceof JsonParam ? JSON.stringify(p.value) : p,
+      );
+      const res = await db.query(text, mapped);
       return res.rows as T[];
     },
     async exec(text: string) {
@@ -103,9 +129,9 @@ function quote(ident: string): string {
   return `"${ident.replace(/"/g, '""')}"`;
 }
 
-/** jsonb columns must arrive as text; everything else passes through. */
+/** Objects and arrays are jsonb-bound; the adapter decides how to encode them. */
 function normalize(value: unknown): unknown {
   if (value === undefined) return null;
-  if (value !== null && typeof value === "object") return JSON.stringify(value);
+  if (value !== null && typeof value === "object") return new JsonParam(value);
   return value;
 }

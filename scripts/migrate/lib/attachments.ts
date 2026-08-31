@@ -132,32 +132,69 @@ function walk(
   }
 }
 
-/** Counts attachments and how many resolved to a path — a verify.ts check. */
-export function countAttachments(entries: unknown): {
+export interface AttachmentCounts {
   total: number;
   withPath: number;
   withUrl: number;
-} {
-  let total = 0;
-  let withPath = 0;
-  let withUrl = 0;
+  /**
+   * No storagePath, but the URL points at our own bucket — we should have been
+   * able to extract a path and didn't. This is the only count that indicates a
+   * bug, and the only one verify treats as a failure.
+   */
+  unresolvedInternal: number;
+  /**
+   * No storagePath and a URL somewhere else entirely (a SharePoint link, say).
+   * Expected and preserved verbatim; preflight surfaces these as warnings so a
+   * human can decide, but they are not migration defects.
+   */
+  external: number;
+}
+
+/** Classifies attachments so verify can distinguish a bug from a known case. */
+export function countAttachments(entries: unknown): AttachmentCounts {
+  const counts: AttachmentCounts = {
+    total: 0,
+    withPath: 0,
+    withUrl: 0,
+    unresolvedInternal: 0,
+    external: 0,
+  };
 
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       node.forEach(visit);
       return;
     }
+    // A jsonb column read back as text still needs walking.
+    if (typeof node === "string") {
+      if (!node.startsWith("[") && !node.startsWith("{")) return;
+      try {
+        visit(JSON.parse(node));
+      } catch {
+        /* not JSON — nothing to walk */
+      }
+      return;
+    }
     if (!node || typeof node !== "object") return;
 
     const obj = node as Record<string, unknown>;
     if ("url" in obj || "storagePath" in obj) {
-      total++;
-      if (typeof obj.storagePath === "string" && obj.storagePath) withPath++;
-      if (typeof obj.url === "string" && obj.url) withUrl++;
+      counts.total++;
+      const hasPath =
+        typeof obj.storagePath === "string" && obj.storagePath !== "";
+      const url = typeof obj.url === "string" ? obj.url : "";
+
+      if (hasPath) counts.withPath++;
+      if (url) counts.withUrl++;
+
+      if (!hasPath) {
+        if (extractStoragePath(url)) counts.unresolvedInternal++;
+        else counts.external++;
+      }
     }
     Object.values(obj).forEach(visit);
   };
 
   visit(entries);
-  return { total, withPath, withUrl };
+  return counts;
 }
