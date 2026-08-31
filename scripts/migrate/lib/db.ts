@@ -110,6 +110,12 @@ export function connect(target: Target) {
     // Migration payloads carry whole activity logs; the default is plenty but
     // being explicit avoids surprises on large clients.
     max_lifetime: 60 * 30,
+    // Supabase requires TLS, and postgres.js does NOT infer it from the URL
+    // unless sslmode is spelled out. Without this the handshake degrades and
+    // the pooler reports "password authentication failed" — an error that
+    // sends you hunting for a credential problem that isn't there.
+    // Local databases get no TLS, since a dev container has none.
+    ssl: target.env === "local" ? false : "require",
     onnotice: () => {},
   });
 }
