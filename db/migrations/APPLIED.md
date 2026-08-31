@@ -5,8 +5,13 @@ scale one is more risk than it removes, and the standing project rule is that
 SQL is applied and verified before the code that depends on it ships.
 
 ```bash
-psql "$KORA_DB_URL" -f db/migrations/000N_name.sql
+pnpm migrate:doctor              # what is applied, and what would block
+pnpm migrate:apply 0003 --dry-run
+pnpm migrate:apply 0003
 ```
+
+`migrate:apply` runs each file in a transaction and makes you type the
+environment name first. `psql -f` works equally well if you have it installed.
 
 Record every application below, including the environment. If a file is ever
 edited after being applied somewhere, add a new numbered file instead — never
@@ -14,11 +19,11 @@ retro-edit an applied one.
 
 | # | File | Local / Docker | Staging | Production | Notes |
 |---|------|----------------|---------|------------|-------|
-| 0001 | `0001_baseline_v1_schema.sql` | — | — | **never** | Reconstruction for local use only. Replace with real `pg_dump --schema-only` output. Must NOT be applied to live. |
-| 0002 | `0002_v2_schema.sql` | — | — | already applied | As-applied record of the original `sql_v2_migration.sql`. Idempotent. |
-| 0003 | `0003_domain_membership.sql` | — | — | — | Additive; safe to apply while the old app runs. Required before backfill. |
-| 0004 | `0004_client_name_ci_unique.sql` | — | — | — | **Gate.** Apply only after preflight reports zero duplicate client names. |
-| 0005 | `0005_backend_indexes.sql` | — | — | — | Additive. Fails if two usernames collide case-insensitively. |
+| 0001 | `0001_baseline_v1_schema.sql` | tests | — | **never** | Reconstruction for local use only. Replace with real `pg_dump --schema-only` output. Must NOT be applied to live. |
+| 0002 | `0002_v2_schema.sql` | tests | — | pre-existing | As-applied record of the original `sql_v2_migration.sql`. Idempotent. |
+| 0003 | `0003_domain_membership.sql` | tests | — | **2026-08-31** | Additive; safe to apply while the old app runs. Required before backfill. |
+| 0004 | `0004_client_name_ci_unique.sql` | tests | — | **2026-08-31** | **Gate.** Apply only after preflight reports zero duplicate client names. |
+| 0005 | `0005_backend_indexes.sql` | tests | — | **2026-08-31** | Additive. Fails if two usernames collide case-insensitively. |
 
 ## Order and dependencies
 
@@ -41,3 +46,27 @@ Not the direct host (`db.<ref>.supabase.co`) — on the free tier it is IPv6-onl
 and unreachable from most networks and from Vercel. Not transaction mode
 (port 6543) either: it does not support the prepared statements `psql` and
 `pg_dump` rely on. The application uses port 6543; tooling uses 5432.
+
+## Production run — 2026-08-31
+
+Applied 0003, 0004 and 0005 against production, then rebuilt the v2 shadow
+tables and verified. All additive; the v1 tables were never written to.
+
+| | |
+|---|---|
+| clients | 22 |
+| integrations | 29 |
+| milestones | 1 |
+| modules | 78 |
+| phases | 702 |
+| ams work-log entries | 2 |
+| attachments | 44, all resolved to a storagePath |
+
+`migrate:verify` passed all three legs with 0 unexplained differences, and
+every domain flag matches the v1 sentinel exactly.
+
+Six clients belong to a domain while having zero rows in it — 2X Marketing and
+Swastik (Implementation), Altius Infrastructure, Anand, Interglobe Aviation and
+NabFID (AMS). Without migration 0003 every one of them would have silently
+disappeared from that view at cutover. This is why the flags exist, and why
+`check-membership` is worth re-running before the final cutover.
