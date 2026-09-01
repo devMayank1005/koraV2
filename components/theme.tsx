@@ -47,21 +47,30 @@ export function useTheme() {
   return { dark, toggle };
 }
 
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({
+  className,
+  showLabel = true,
+}: {
+  className?: string;
+  /** Off in the collapsed sidebar, where there are 56px to work with. */
+  showLabel?: boolean;
+}) {
   const { dark, toggle } = useTheme();
+  const label = dark ? "Switch to light theme" : "Switch to dark theme";
   return (
     <button
       type="button"
       onClick={toggle}
       className={className ?? "k-btn k-btn-outline k-btn-sm"}
-      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      aria-label={label}
+      title={showLabel ? undefined : label}
     >
       {dark ? (
         <Moon size={15} strokeWidth={1.5} />
       ) : (
         <Sun size={15} strokeWidth={1.5} />
       )}
-      {dark ? "Dark" : "Light"}
+      {showLabel && (dark ? "Dark" : "Light")}
     </button>
   );
 }
