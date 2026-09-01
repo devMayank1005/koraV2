@@ -143,15 +143,11 @@ export function LoginForm({ next }: { next: string }) {
         <span className="h-px flex-1 bg-k-line" />
       </div>
 
-      {/* Wired up in step 12; the endpoint does not exist yet. */}
+      {/* A plain link, deliberately: the flow is a server redirect, so there
+          is nothing for JavaScript to do and it works with JS disabled. */}
       <a
         href="/api/auth/microsoft/start"
         className="k-btn k-btn-outline k-btn-lg w-full"
-        aria-disabled="true"
-        onClick={(e) => {
-          e.preventDefault();
-          setError("Microsoft sign-in is not wired up yet. Use your username and password.");
-        }}
       >
         <MicrosoftMark />
         Sign in with Microsoft 365

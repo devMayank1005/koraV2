@@ -219,3 +219,73 @@ export async function attemptLogin(
     },
   };
 }
+
+/**
+ * Issues a session for a user who has already proven who they are.
+ *
+ * Shared by the password path above and the Microsoft SSO callback, so the two
+ * cannot drift on what signing in means. That matters most for the lockout
+ * counters: clearing them here means an SSO sign-in releases a username
+ * lockout exactly as a password sign-in does.
+ *
+ * SSO deliberately does NOT check `locked_until` before calling this. Lockout
+ * exists to stop password guessing, and somebody who has just cleared Entra —
+ * with MFA, most likely — has proven identity by a stronger factor than the
+ * one being throttled. Blocking them would also hand an attacker a way to deny
+ * a colleague their SSO login simply by burning failed password attempts
+ * against their username.
+ */
+export async function issueSession(
+  db: AnyDb,
+  user: { id: string; username: string; name: string; email?: string | null; role: string; tokenVersion?: number },
+  ctx: { ip?: string | null; userAgent?: string | null; action: string; screen?: string },
+  now = Date.now(),
+): Promise<{ token: string; user: { id: string; username: string; name: string; email: string; role: string } }> {
+  const secret = process.env.INTEGTRACK_SECRET;
+  if (!secret) throw new Error("INTEGTRACK_SECRET is not set");
+
+  const cleared = clearedState();
+  await db
+    .update(users)
+    .set({
+      failedAttempts: cleared.failed_attempts,
+      lockoutLevel: cleared.lockout_level,
+      lockedUntil: cleared.locked_until,
+    })
+    .where(eq(users.id, user.id));
+
+  const token = signToken(
+    buildPayload(
+      {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        tokenVersion: user.tokenVersion ?? 0,
+      },
+      now,
+    ),
+    secret,
+  );
+
+  await logAudit(db, {
+    actorId: user.id,
+    username: user.username,
+    role: user.role,
+    action: ctx.action,
+    entity: "session",
+    screen: ctx.screen ?? "login",
+    ip: ctx.ip,
+    userAgent: ctx.userAgent,
+  });
+
+  return {
+    token,
+    user: {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      email: user.email ?? "",
+      role: user.role,
+    },
+  };
+}

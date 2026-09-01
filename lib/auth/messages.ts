@@ -16,6 +16,8 @@ export const SSO_ERRORS: Record<string, string> = {
   exchange_failed: "Could not complete Microsoft sign-in. Please try again.",
   graph_failed: "Could not read your Microsoft profile. Please try again.",
   no_email: "Your Microsoft account has no email address, so we cannot match it.",
+  sso_ambiguous:
+    "Two Kora accounts share that email address, so we cannot tell which is yours. Ask an admin to resolve the duplicate.",
   lookup_failed: "Sign-in is temporarily unavailable. Please try again.",
   unexpected_error: "Something went wrong during Microsoft sign-in.",
 };
