@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 
 /**
  * Supabase Storage — signed attachment URLs.
@@ -19,22 +20,8 @@ const BUCKET = "kora-attachments";
 /** Matches the old app's 4-hour window; regenerated on every read anyway. */
 export const SIGNED_URL_TTL_SECONDS = 4 * 60 * 60;
 
-let cached: SupabaseClient | undefined;
-
 function storage(): SupabaseClient["storage"] {
-  if (!cached) {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) {
-      throw new Error(
-        "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to sign attachment URLs",
-      );
-    }
-    cached = createClient(url, key, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-  }
-  return cached.storage;
+  return supabase().storage;
 }
 
 /**

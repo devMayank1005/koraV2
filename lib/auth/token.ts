@@ -32,10 +32,24 @@ export function signToken(payload: TokenPayload, secret: string): string {
   return `${b64}.${sig}`;
 }
 
+/** Signs any JSON payload in the same wire format. */
+export function signSigned(payload: object, secret: string): string {
+  const b64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = crypto.createHmac("sha256", secret).update(b64).digest("hex");
+  return `${b64}.${sig}`;
+}
+
 /**
- * Verifies the signature and returns the payload, or null.
+ * Verifies the signature and returns the decoded payload, or null.
  *
- * THE HEX PRE-CHECK IS LOad-BEARING. `timingSafeEqual` throws a RangeError on
+ * Proves ONE thing: this string was signed with our secret and has not been
+ * altered. It says nothing about what the payload means. Every caller must
+ * check a `purpose` field or an equivalent discriminator — a 7-day session
+ * token and a 10-minute SSO state token are both "signed by us", so accepting
+ * either wherever one is expected is a real confusion attack. The old app
+ * carried exactly that check for exactly that reason.
+ *
+ * THE HEX PRE-CHECK IS LOAD-BEARING. `timingSafeEqual` throws a RangeError on
  * buffers of unequal length, and `Buffer.from(sig, "hex")` silently produces a
  * short buffer for any non-hex input. Without the regex, sending a garbage
  * token threw an uncaught error inside every endpoint — an unauthenticated
@@ -43,10 +57,10 @@ export function signToken(payload: TokenPayload, secret: string): string {
  * (fixed there as "M-4"); it is kept here because the failure is completely
  * silent until someone probes for it.
  */
-export function verifyToken(
+export function verifySigned<T>(
   token: string | undefined | null,
   secret: string | undefined | null,
-): TokenPayload | null {
+): T | null {
   if (!token || !secret) return null;
 
   // The payload is base64url and contains no dots, so the last one separates
@@ -69,22 +83,36 @@ export function verifyToken(
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
 
   try {
-    const parsed = JSON.parse(
-      Buffer.from(payloadB64, "base64url").toString(),
-    ) as TokenPayload;
-    // A signed but structurally wrong payload should fail closed rather than
-    // flow onward as `undefined` fields.
-    if (
-      typeof parsed?.id !== "string" ||
-      typeof parsed?.username !== "string" ||
-      typeof parsed?.exp !== "number"
-    ) {
-      return null;
-    }
-    return parsed;
+    return JSON.parse(Buffer.from(payloadB64, "base64url").toString()) as T;
   } catch {
     return null;
   }
+}
+
+/**
+ * Verifies a SESSION token specifically.
+ *
+ * The shape check is what separates this from `verifySigned`: a signed but
+ * structurally wrong payload fails closed rather than flowing onward with
+ * `undefined` fields. It is also what makes this function unusable for any
+ * other kind of signed payload — an SSO state token has no `id` or `username`,
+ * so passing one here returns null even though the signature is perfectly
+ * valid. That is deliberate; use `verifySigned` with an explicit `purpose`
+ * check instead.
+ */
+export function verifyToken(
+  token: string | undefined | null,
+  secret: string | undefined | null,
+): TokenPayload | null {
+  const parsed = verifySigned<TokenPayload>(token, secret);
+  if (
+    typeof parsed?.id !== "string" ||
+    typeof parsed?.username !== "string" ||
+    typeof parsed?.exp !== "number"
+  ) {
+    return null;
+  }
+  return parsed;
 }
 
 export function isExpired(payload: TokenPayload, now = Date.now()): boolean {
