@@ -21,6 +21,7 @@
     "migrate:doctor": "tsx scripts/migrate/doctor.ts",
     "migrate:apply": "tsx scripts/migrate/apply.ts",
     "migrate:membership": "tsx scripts/migrate/check-membership.ts",
+    "parity:compare": "tsx scripts/parity-compare.ts",
     "seed:auth": "tsx scripts/seed-auth-dev.ts"
   },
   "dependencies": {
@@ -64,5 +65,5 @@
     "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@11.21.0",
-  "description": "Kora — Kognoz client delivery tracker (Next.js rebuild)"
+  "description": "Kora \u2014 Kognoz client delivery tracker (Next.js rebuild)"
 }

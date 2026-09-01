@@ -20,7 +20,7 @@ import { announce, connect, resolveTarget } from "./lib/db";
 import { fromPostgresJs, type Executor } from "./lib/executor";
 import { readV1Clients, readV2Snapshot } from "./lib/read-v1";
 import { planBackfill } from "./lib/backfill-core";
-import { toV1Shape, mappedToV1Shape } from "./lib/inverse";
+import { toV1Shape, mappedToV1Shape } from "@/lib/db/inverse";
 import { countAttachments } from "./lib/attachments";
 import { printTable, writeReport } from "./lib/report";
 

@@ -9,7 +9,7 @@ import {
   applyBackfill,
   assertTallies,
 } from "@/scripts/migrate/lib/backfill-core";
-import { toV1Shape, mappedToV1Shape } from "@/scripts/migrate/lib/inverse";
+import { toV1Shape, mappedToV1Shape } from "@/lib/db/inverse";
 import { SAMPLE_V1_CLIENTS } from "@/scripts/migrate/lib/sample-v1";
 
 /**
@@ -304,6 +304,96 @@ describe("migration pipeline, end to end", () => {
       await applyBackfill(exec, planBackfill(clients));
 
       expect(await snapshot()).toBe(before);
+    });
+  });
+});
+
+describe("inverse shaping is key-convention agnostic", () => {
+  /**
+   * verify.ts reads with raw SQL (snake_case keys); the API reads through
+   * Drizzle (camelCase keys). Both call toV1Shape. When it only understood
+   * snake_case, the Drizzle path produced a structurally valid client with its
+   * modules, work log and dates silently missing — no throw, no warning.
+   */
+  const snakeSnap = {
+    client: {
+      id: "c1", name: "Aster", description: "SAP", currency: "INR",
+      master_assignee: "Arjun", man_day_rate: "8000",
+      total_available_hours: "120", has_implementation: true, has_ams: true,
+      archived: false,
+    },
+    integrations: [{
+      id: "i1", client_id: "c1", name: "Payroll", status: "At Risk",
+      due_date: "2026-09-02", next_action: "chase", effort_weight: "2",
+      activity_log: [{ id: "t1", addedBy: "Meera", storagePath: "a/b.pdf" }],
+      archived: false,
+    }],
+    milestones: [{
+      id: "ms1", client_id: "c1", integration_id: "i1", name: "UAT",
+      status: "Open", due_date: "2026-09-10", archived: false,
+    }],
+    modules: [{ id: "m1", client_id: "c1", name: "Core HR", archived: false }],
+    phases: [{
+      id: "p1", client_id: "c1", module_id: "m1", phase_name: "BPU",
+      status: "Completed", target_date: "2026-03-01", start_date: "2026-01-05",
+      current_activity: "done", next_action: "", activity_log: [], archived: false,
+    }],
+    workLog: [{
+      id: "w1", client_id: "c1", date_raised: "2026-08-04", due_date: "2026-08-09",
+      raised_by: "Kavya", description: "Leave accrual", entry_type: "Bug Fix",
+      query_level: "L4 - Critical", entry_status: "Open", rag_status: "Amber",
+      mode_of_support: "Remote", hours: "6.5", edit_history: [], archived: false,
+    }],
+  };
+
+  const toCamel = (row: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(row).map(([k, v]) => [
+        k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()),
+        v,
+      ]),
+    );
+
+  it("produces identical output from camelCase and snake_case rows", () => {
+    const camelSnap = {
+      client: toCamel(snakeSnap.client),
+      integrations: snakeSnap.integrations.map(toCamel),
+      milestones: snakeSnap.milestones.map(toCamel),
+      modules: snakeSnap.modules.map(toCamel),
+      phases: snakeSnap.phases.map(toCamel),
+      workLog: snakeSnap.workLog.map(toCamel),
+    };
+    expect(JSON.stringify(toV1Shape(camelSnap))).toBe(
+      JSON.stringify(toV1Shape(snakeSnap)),
+    );
+  });
+
+  it("actually populates the fields that were silently dropped", () => {
+    // Guards against both sides being equally empty, which would make the
+    // equality assertion above pass while proving nothing.
+    const out = toV1Shape({
+      client: toCamel(snakeSnap.client),
+      integrations: snakeSnap.integrations.map(toCamel),
+      milestones: snakeSnap.milestones.map(toCamel),
+      modules: snakeSnap.modules.map(toCamel),
+      phases: snakeSnap.phases.map(toCamel),
+      workLog: snakeSnap.workLog.map(toCamel),
+    });
+    expect(out.modules?.[0]?.phases?.[0]?.name).toBe("BPU");
+    expect(out.workLog?.[0]?.dateRaised).toBe("2026-08-04");
+    expect(out.integrations?.[0]?.dueDate).toBe("2026-09-02");
+    expect(out.integrations?.[0]?.effortWeight).toBe(2);
+    expect(out.integrations?.[0]?.milestones?.[0]?.name).toBe("UAT");
+    expect(out.masterAssignee).toBe("Arjun");
+  });
+
+  it("leaves jsonb payload keys alone", () => {
+    // Normalization is shallow: `addedBy` and `storagePath` inside activity_log
+    // are stored data, not column names. Rewriting them would corrupt exactly
+    // the values being reconstructed.
+    const out = toV1Shape({ ...snakeSnap, client: toCamel(snakeSnap.client) });
+    expect(out.integrations?.[0]?.timeline?.[0]).toEqual({
+      id: "t1", addedBy: "Meera", storagePath: "a/b.pdf",
     });
   });
 });

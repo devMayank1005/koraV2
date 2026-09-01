@@ -1,5 +1,5 @@
 import type { Client } from "@/lib/domain/types";
-import type { MappedClient } from "./mapping";
+import type { MappedClient } from "@/scripts/migrate/lib/mapping";
 
 /**
  * v2 rows -> the v1-shaped client object.
@@ -28,8 +28,49 @@ export interface V2Snapshot {
   workLog: Record<string, unknown>[];
 }
 
+/**
+ * Two callers feed this function rows from two different drivers.
+ *
+ * `verify.ts` reads with raw SQL, so its keys are the database's own
+ * snake_case. The API reads through Drizzle, which maps them to the camelCase
+ * property names declared in schema.ts. Feeding camelCase rows to a body that
+ * reads `has_implementation` does not throw — every lookup just returns
+ * undefined, so the client comes back structurally valid but stripped of its
+ * modules, work log and dates. That failure is silent and survives a casual
+ * eyeball, which is exactly why the keys are normalized here instead of the
+ * body being taught to accept either spelling.
+ *
+ * SHALLOW on purpose. jsonb payloads (activity_log entries, edit history) carry
+ * camelCase keys that are part of the stored data — `addedBy`, `storagePath` —
+ * and rewriting those would corrupt the very values being reconstructed.
+ */
+function snakeKeys(row: Record<string, unknown>): Record<string, unknown> {
+  let needsWork = false;
+  for (const k in row) {
+    if (/[A-Z]/.test(k)) {
+      needsWork = true;
+      break;
+    }
+  }
+  if (!needsWork) return row; // already snake_case — the verify.ts path
+
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    out[k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)] = v;
+  }
+  return out;
+}
+
 /** Comparable v1 shape. Field order is normalized so JSON compare is stable. */
-export function toV1Shape(snap: V2Snapshot): Client {
+export function toV1Shape(input: V2Snapshot): Client {
+  const snap: V2Snapshot = {
+    client: snakeKeys(input.client),
+    integrations: input.integrations.map(snakeKeys),
+    milestones: input.milestones.map(snakeKeys),
+    modules: input.modules.map(snakeKeys),
+    phases: input.phases.map(snakeKeys),
+    workLog: input.workLog.map(snakeKeys),
+  };
   const c = snap.client;
 
   const out: Client = {
