@@ -394,3 +394,42 @@ describe("deployment misconfiguration is caught, not hidden", () => {
     expect(body.ok).toBe(false);
   });
 });
+
+describe("authenticated pages are never prerendered", () => {
+  /**
+   * `/ams` was statically prerendered, which ran the (app) layout during
+   * `next build` and hit the database from a build machine. It only surfaced
+   * because a guard happened to throw there; without it the build would have
+   * quietly produced an HTML snapshot of a signed-out shell and served it to
+   * everyone.
+   *
+   * `cookies()` marks a route dynamic, but only once CALLED — and argument
+   * evaluation is left to right, so `validateSession(getDb(), await
+   * readSessionCookie())` reached the database first. Two defences now: the
+   * cookie is read before the handle is asked for, and the layout says so
+   * explicitly. This asserts the explicit one, because the ordering is the
+   * kind of thing a refactor undoes without noticing.
+   */
+  it("the (app) layout opts out of static rendering", async () => {
+    const layout = await import("@/app/(app)/layout");
+    expect(layout.dynamic).toBe("force-dynamic");
+  });
+
+  it("reads the session cookie before asking for a database handle", () => {
+    // Belt and braces on the ordering that caused it. Scoped to the FUNCTION
+    // BODY — a first version searched the whole file and matched the import on
+    // line 2 and the explanatory comment on line 29, so it failed while the
+    // code was correct.
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), "app/(app)/layout.tsx"),
+      "utf8",
+    );
+    const body = src.slice(src.indexOf("export default async function AppLayout"));
+
+    const cookieAt = body.indexOf("readSessionCookie()");
+    const dbAt = body.indexOf("getDb()");
+    expect(cookieAt).toBeGreaterThan(-1);
+    expect(dbAt).toBeGreaterThan(-1);
+    expect(cookieAt).toBeLessThan(dbAt);
+  });
+});

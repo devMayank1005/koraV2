@@ -66,8 +66,16 @@ export function getDb(): Db {
    *
    * Refusing here turns a confusing outage into one sentence naming the cause.
    */
+  // NOT during `next build`. A build serves no requests, and failing it would
+  // block deploying the /api/health endpoint that diagnoses this exact
+  // problem — which is precisely what happened the first time this guard ran.
+  // A broken DATABASE_URL should stop a request, loudly, not stop the deploy
+  // of the thing that explains why.
+  const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+
   if (
     url &&
+    !isBuild &&
     process.env.NODE_ENV === "production" &&
     /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url)
   ) {

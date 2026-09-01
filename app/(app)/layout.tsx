@@ -17,12 +17,30 @@ import { AppChrome } from "@/components/app-chrome";
  * the one baked into the token. A demotion takes effect on the next page load
  * rather than in seven days when the token expires.
  */
+/**
+ * Never prerendered.
+ *
+ * Every page under this layout depends on who is asking, so a build-time HTML
+ * snapshot is meaningless — and worse than meaningless: Next attempted to
+ * prerender `/ams`, ran this layout, and hit the database during `next build`.
+ *
+ * `cookies()` below would normally mark the route dynamic on its own, but only
+ * once it is CALLED. Argument evaluation is left to right, so
+ * `validateSession(getDb(), await readSessionCookie())` reached `getDb()`
+ * first — before Next had learned this route could not be static. The cookie
+ * is now read before the database handle is asked for, and this export states
+ * the intent rather than relying on that ordering holding.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await validateSession(getDb(), await readSessionCookie());
+  // Cookie FIRST. See the note above: this ordering is load-bearing.
+  const token = await readSessionCookie();
+  const session = await validateSession(getDb(), token);
 
   if (!session.valid) {
     // The proxy normally catches this first; reaching here means the session
