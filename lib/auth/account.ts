@@ -1,6 +1,7 @@
 import { eq, sql, isNotNull } from "drizzle-orm";
 import { users, loginIpThrottle } from "@/lib/db/schema";
 import { logAudit } from "@/lib/audit";
+import { clearAllIpLocks } from "./throttle";
 import { signToken, buildPayload } from "./token";
 import { verifyPassword, hashPassword, assertPassword } from "./password";
 import { clearedState } from "./lockout";
@@ -232,14 +233,13 @@ export async function clearLockout(
     (r) => r.lockedUntil && new Date(r.lockedUntil).getTime() > now,
   );
 
-  let networkLocksCleared = 0;
-  if (opts.clearNetworkLocks && stillLocked.length) {
-    const res = await db
-      .delete(loginIpThrottle)
-      .where(isNotNull(loginIpThrottle.lockedUntil))
-      .returning({ ip: loginIpThrottle.ip });
-    networkLocksCleared = res.length;
-  }
+  // clearAllIpLocks rather than repeating its DELETE here: the same statement
+  // written twice is the same statement free to drift, and this one decides
+  // whether somebody can log in.
+  const networkLocksCleared =
+    opts.clearNetworkLocks && stillLocked.length
+      ? await clearAllIpLocks(db)
+      : 0;
 
   await logAudit(db, {
     actorId: actor.id,

@@ -147,17 +147,3 @@ export async function archiveOrThrow<T extends PgTable & Archival>(
 ): Promise<Record<string, unknown>> {
   return updateOrThrow(db, table, entity, id, token, { archived: true });
 }
-
-/** Reads a row's OCC token without pulling the whole row. */
-export async function tokenOf<T extends PgTable & Archival>(
-  db: AnyDb,
-  table: T,
-  id: string,
-): Promise<string | null> {
-  const rows = await db
-    .select({ _v: vToken(table.updatedAt) })
-    .from(table as AnyTable)
-    .where(and(eq(table.id, id), eq(table.archived, false)))
-    .limit(1);
-  return (rows as Array<{ _v: string }>)[0]?._v ?? null;
-}

@@ -195,25 +195,6 @@ export async function restoreClient(
   });
 }
 
-/**
- * Turns a domain on or off for a client.
- *
- * In v1 this was expressed by whether the `modules` / `workLog` key existed on
- * the jsonb blob at all, and turning a domain off meant deleting the key —
- * which took the records with it. Here the flag and the rows are separate, so
- * switching a domain off hides it from the domain view and switching it back
- * on returns the data untouched.
- */
-export async function setClientDomains(
-  db: AnyDb,
-  id: string,
-  token: string,
-  domains: { hasImplementation?: boolean; hasAms?: boolean },
-): Promise<Record<string, unknown>> {
-  const row = await updateOrThrow(db, clients, "client", id, token, domains);
-  return { ...row, _v: await tokenFor(db, id) };
-}
-
 /** The freshly written OCC token, so the client can save again immediately. */
 async function tokenFor(db: AnyDb, id: string): Promise<string | null> {
   const [row] = await db
