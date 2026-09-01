@@ -14,13 +14,19 @@ export const BCRYPT_COST = 12;
 export const MIN_PASSWORD_LENGTH = 8;
 
 /**
- * A real bcrypt hash of a value nobody knows, at the same cost as production.
+ * NOT A CREDENTIAL. A bcrypt hash of a value nobody knows, at production cost.
  *
- * Used when the username does not exist, so that request spends roughly the
- * same time as a wrong-password request. Without it the two are trivially
- * distinguishable by response time even though both return an identical 401,
- * which hands an attacker a username oracle. Ported verbatim so the cost
- * matches exactly.
+ * It authenticates nothing: no password produces it, it is never stored on a
+ * user, and it is only ever compared *against*. Its sole purpose is to burn
+ * the same ~250ms a real verification costs when the username does not exist,
+ * so that response timing cannot be used to enumerate accounts — both cases
+ * return an identical 401, and without this they are trivially distinguishable
+ * by a stopwatch.
+ *
+ * Kept as a constant deliberately. Generating one at startup would add a
+ * bcrypt round to every cold start for no security benefit, since the value
+ * being unknown is the only property that matters. Secret scanners flag the
+ * shape; see .gitguardian.yaml.
  */
 const DUMMY_HASH =
   "$2b$12$qs9g9NfuP.AOlgY5K24XsekwE.GxJ5.99rmHJDYy9O1ZIlKjBS/Pa";

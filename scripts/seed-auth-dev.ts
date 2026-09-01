@@ -23,7 +23,15 @@ loadEnv({ path: path.resolve(process.cwd(), ".env.local"), quiet: true });
 
 const MIGRATIONS = ["0001_baseline_v1_schema.sql", "0005_backend_indexes.sql"];
 
-const PASSWORD = "kora-dev-password";
+/**
+ * Generated per run rather than hardcoded, so this file contains no password
+ * literal for a scanner to flag — and so two developers never end up sharing a
+ * known credential out of convenience. Set KORA_DEV_PASSWORD to pin it across
+ * re-seeds.
+ */
+const PASSWORD =
+  process.env.KORA_DEV_PASSWORD ??
+  `dev-${crypto.randomBytes(6).toString("base64url")}`;
 
 const ACCOUNTS = [
   {

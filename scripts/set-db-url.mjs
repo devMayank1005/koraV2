@@ -41,10 +41,23 @@ function ask(question, { hidden = false } = {}) {
   });
 }
 
-const DEFAULTS = { ref: "ximzrcwyrsqrirszchub", region: "aws-1-ap-south-1" };
+// Read from the environment rather than baked in: the project ref identifies
+// a specific Supabase instance, and a repository is the wrong place to keep a
+// pointer to production infrastructure.
+const DEFAULTS = {
+  ref: process.env.SUPABASE_PROJECT_REF ?? "",
+  region: process.env.SUPABASE_REGION ?? "aws-1-ap-south-1",
+};
 
 const ref =
-  (await ask(`Project ref [${DEFAULTS.ref}]: `)) || DEFAULTS.ref;
+  (await ask(
+    DEFAULTS.ref ? `Project ref [${DEFAULTS.ref}]: ` : "Project ref: ",
+  )) || DEFAULTS.ref;
+
+if (!ref) {
+  console.error("\nA project ref is required (Supabase dashboard -> Connect).");
+  process.exit(1);
+}
 const region =
   (await ask(`Pooler region [${DEFAULTS.region}]: `)) || DEFAULTS.region;
 const password = await ask("Database password (hidden): ", { hidden: true });

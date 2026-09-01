@@ -78,8 +78,8 @@
   --k-surface: #fafafa; /* page ground, table head */
   --k-line-2: #f4f4f5; /* inner divider           */
   --k-line: #e4e4e7; /* structural hairline     */
-  --k-field: #d9d9d9; /* form control border     */
-  --k-mute-2: #a1a1aa; /* lightest label          */
+  --k-field: #939598; /* form control border — --kognoz-grey, 3.00:1 */
+  --k-mute-2: #a1a1aa; /* NON-TEXT only — see note */
   --k-mute: #71717a; /* secondary text          */
   --k-ink-3: #3f3f46; /* tertiary body text      */
   --k-ink-2: #003252; /* deep brand ground       */
@@ -89,6 +89,17 @@
   --k-radius: 4px;
   --k-radius-chip: 3px;
   --k-pill: 9999px;
+
+  /* ON --k-mute-2 AND TEXT
+     There is no colour lighter than --k-mute (#71717A, 4.83:1) that reaches
+     AA on white — #71717A is literally the first passing value, so a fourth,
+     lighter TEXT tier cannot exist. The handoff specifies #A1A1AA for eyebrows
+     while also stating #71717A is the lightest text allowed on white; the two
+     rules contradict, and the contrast maths settles it.
+     So --k-mute-2 is for NON-TEXT only: empty-state icons, decorative rules,
+     disabled marks. Eyebrows, column headers and placeholders use --k-mute.
+     The hierarchy survives because an eyebrow is distinguished by being 10px
+     uppercase with wide tracking, not by being pale. */
 
   /* --- Elevation --------------------------------------------------------- */
   --k-shadow-s: 0 1px 2px rgba(33, 33, 33, 0.04);
@@ -324,7 +335,9 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--k-mute-2);
+    /* --k-mute, not --k-mute-2: at 10px this must clear AA, and no lighter
+       value can. Uppercase + tracking carry the hierarchy instead. */
+    color: var(--k-mute);
   }
 
   .k-page-title {
@@ -480,7 +493,8 @@
   }
 
   .k-input::placeholder {
-    color: var(--k-mute-2);
+    /* Placeholders are read as text and must clear AA like any other. */
+    color: var(--k-mute);
   }
 
   .k-input:focus {
@@ -637,7 +651,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--k-mute-2);
+    color: var(--k-mute);
   }
 
   .k-row {

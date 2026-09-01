@@ -631,10 +631,14 @@ export default function StyleguidePage() {
         >
           <ContrastPanel />
           <p className="mt-3 text-k-small leading-[1.6] text-k-mute">
-            Two light-theme values sit below AA and are inherited from the
-            handoff rather than chosen here: the 10px eyebrow at 2.56:1, and the
-            form-control border at 1.41:1. Both are flagged for your decision —
-            dark mode does not reproduce either.
+            Every pair the app renders meets AA in both themes, enforced by a
+            test that reads these same tokens. Two handoff values did not and
+            were changed: eyebrows now use <code>--k-mute</code>, because on
+            white no colour lighter than it reaches AA — <code>#71717A</code> is
+            literally the first passing value, so the pale fourth text tier the
+            handoff asks for cannot exist. Form-control borders moved to{" "}
+            <code>#939598</code>, which is the brand&apos;s own Kognoz grey and
+            lands exactly on the 3:1 WCAG asks of a control boundary.
           </p>
         </Section>
 

@@ -44,8 +44,11 @@ function pairs(): Pair[] {
     onSurface("--k-mute", "normal", "text", "table header on its band"),
     onPaper("--k-primary", "normal", "text", "page titles and links"),
     onSurface("--k-primary", "normal", "text", "page title on the ground"),
-    // 10px, so held to the normal threshold rather than excused as "large".
-    onPaper("--k-mute-2", "normal", "text", "10px eyebrow / column header"),
+    // .k-eyebrow renders in --k-mute, not --k-mute-2 — no lighter value can
+    // reach AA on white, so mute-2 is non-text only now.
+    onPaper("--k-mute", "normal", "text", "10px eyebrow / column header"),
+    // Kept as a decorative measurement so the number stays visible.
+    onPaper("--k-mute-2", "ui", "decorative", "--k-mute-2 (non-text use only)"),
 
     ...(
       [
@@ -111,20 +114,14 @@ function pairs(): Pair[] {
  * not ours to quietly alter. Listed rather than hidden: each is reported on
  * every run, and the dark theme is separately asserted NOT to inherit them.
  */
-const LIGHT_ACCEPTED: Record<string, string> = {
-  "10px eyebrow / column header":
-    "handoff specifies #A1A1AA for eyebrows (2.56:1). Its own rule says #71717A " +
-    "is the lightest text allowed on white — the two contradict. Raising this to " +
-    "--k-mute would clear AA at 4.83:1. Brand decision, flagged for sign-off.",
-
-  "form control border":
-    "handoff specifies a 1px #D9D9D9 border on inputs (1.41:1). WCAG 1.4.11 " +
-    "asks 3:1 of the visual information identifying a control, and on white " +
-    "that border is most of it. #949499 would clear it at 3.02:1. Mitigated in " +
-    "practice: every input carries a visible uppercase label, and the focus " +
-    "state swaps to a --k-primary border plus a 3px ring, both far above 3:1. " +
-    "Dark mode does not reproduce this — it sits at 3.00:1. Flagged for sign-off.",
-};
+/**
+ * Known deviations in the LIGHT theme, which is the client's brand palette.
+ *
+ * Currently empty: both entries that lived here — the 10px eyebrow and the
+ * form-control border — were fixed rather than accepted. A test below fails if
+ * an entry ever starts passing, so this cannot quietly outlive its problem.
+ */
+const LIGHT_ACCEPTED: Record<string, string> = {};
 
 function flatten(tint: string, bg: string): string {
   const m = tint.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)[\s,/]+([\d.]+)\s*\)/);
