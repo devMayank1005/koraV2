@@ -23,6 +23,7 @@ retro-edit an applied one.
 | 0002 | `0002_v2_schema.sql` | tests | — | pre-existing | As-applied record of the original `sql_v2_migration.sql`. Idempotent. |
 | 0003 | `0003_domain_membership.sql` | tests | — | **2026-08-31** | Additive; safe to apply while the old app runs. Required before backfill. |
 | 0004 | `0004_client_name_ci_unique.sql` | tests | — | **2026-08-31** | **Gate.** Apply only after preflight reports zero duplicate client names. |
+| 0006 | `0006_updated_at_trigger.sql` | tests, local, **production** | 2026-09-01 | applied | Makes `updated_at` a trigger. Leaving it to each statement means forgetting it anywhere silently disables OCC for that entity — writes keep returning 200 while overwriting each other. `before update` only, so the backfill's preserved v1 timestamps on INSERT are untouched and re-running it stays idempotent. |
 | 0005 | `0005_backend_indexes.sql` | tests | — | **2026-08-31** | Additive. Fails if two usernames collide case-insensitively. |
 
 ## Order and dependencies
@@ -71,13 +72,18 @@ NabFID (AMS). Without migration 0003 every one of them would have silently
 disappeared from that view at cutover. This is why the flags exist, and why
 `check-membership` is worth re-running before the final cutover.
 
-## 0006_updated_at_trigger.sql — NOT YET APPLIED
+## 0006_updated_at_trigger.sql — APPLIED to production, 2026-09-01
 
-Pending your approval; run `pnpm migrate:apply` when you want it in.
+Verified after applying: the `set_updated_at` function exists, all **7 of 7**
+triggers are present and enabled (`clients_v2`, `integrations_v2`,
+`milestones_v2`, `modules_v2`, `phases_v2`, `ams_work_log_v2`, `users`), and
+`migrate:verify` still passes all three legs with 0 unexplained differences.
 
-Not urgent: nothing writes to the v2 tables in production yet, so the trigger
-changes no current behaviour. It **must** be applied before cutover, because
-the new app's optimistic concurrency depends on it.
+Confirmed working rather than assumed: an UPDATE that does NOT set
+`updated_at` — a no-op write on one client — advanced the token from
+`2026-08-27T14:11:43.262Z` to `2026-09-01T11:11:24.518Z` and left the data
+untouched. **Optimistic concurrency is live on production.** Before this, every
+stale write would have returned 200 while silently overwriting.
 
 **What it does.** `updated_at` is the OCC token: a GET hands it out as `_v`, a
 PATCH echoes it in `If-Match`, and the UPDATE matches on equality. The v2

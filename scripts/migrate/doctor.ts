@@ -10,6 +10,8 @@
  *
  * Read-only.
  */
+import fs from "node:fs";
+import path from "node:path";
 import { announce, connect, resolveTarget } from "./lib/db";
 
 interface Check {
@@ -55,6 +57,20 @@ async function main() {
       name: "0005 backend indexes",
       status: have.has("uq_users_username_ci") && have.has("idx_audit_log_ts") ? "ok" : "todo",
       detail: `${have.size} of 3 target indexes present`,
+    });
+
+    const trg = await sql<{ n: number }[]>`
+      select count(*)::int as n from pg_trigger
+      where tgname like 'trg_%_updated_at'
+    `;
+    const TRIGGER_TABLES = 7;
+    checks.push({
+      name: "0006 updated_at trigger",
+      status: trg[0].n === TRIGGER_TABLES ? "ok" : "todo",
+      detail:
+        trg[0].n === TRIGGER_TABLES
+          ? `${TRIGGER_TABLES} of ${TRIGGER_TABLES} triggers present`
+          : `${trg[0].n} of ${TRIGGER_TABLES} — OCC will not work until applied`,
     });
 
     const rl = await sql<{ e: boolean }[]>`
@@ -153,10 +169,37 @@ async function main() {
       console.log(`  ${blocked.length} blocking issue(s) — resolve before applying migrations.\n`);
       process.exit(1);
     }
+    /**
+     * A migration file with no check here is INVISIBLE to this tool, and this
+     * tool is the pre-cutover readiness gate. It reported "All migrations
+     * already applied" while 0006 was outstanding, purely because nobody had
+     * added a probe for it — the docs and the tool disagreed and the tool is
+     * the one people trust. Comparing against the files on disk means the next
+     * migration cannot be forgotten the same way.
+     */
+    const onDisk = fs
+      .readdirSync(path.resolve(process.cwd(), "db/migrations"))
+      .filter((f) => f.endsWith(".sql") && !f.startsWith("0001"))
+      .map((f) => f.slice(0, 4));
+    const probed = new Set(
+      checks.map((c) => c.name.match(/^(\d{4})/)?.[1]).filter(Boolean),
+    );
+    const unprobed = onDisk.filter((n) => !probed.has(n) && n !== "0002");
+
+    if (unprobed.length) {
+      console.log(
+        `  ${unprobed.length} migration file(s) have NO check here and cannot be\n` +
+          `  reported on: ${unprobed.join(", ")}. Add a probe to doctor.ts before\n` +
+          `  trusting the line below.\n`,
+      );
+    }
+
     console.log(
       todo.length
         ? `  Safe to apply: ${todo.map((t) => t.name).join(", ")}\n`
-        : "  All migrations already applied.\n",
+        : unprobed.length
+          ? "  Every migration this tool KNOWS ABOUT is applied.\n"
+          : "  All migrations already applied.\n",
     );
   } finally {
     await sql.end({ timeout: 5 });
