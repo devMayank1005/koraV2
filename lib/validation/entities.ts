@@ -222,6 +222,40 @@ export const userUpdate = userCreate
   .omit({ username: true })
   .strict();
 
+/* ---------------------------------------------------------- client email */
+
+/**
+ * A message to a client, with the generated report attached.
+ *
+ * `cc` is capped here rather than in the rate limiter: a send is a send
+ * regardless of how many people it copies, but an unbounded cc list turns one
+ * "email" into a mass mailing from the company mailbox.
+ */
+export const clientEmailSend = z
+  .object({
+    to: z.email("Enter a valid email address").max(200),
+    cc: z.array(z.email().max(200)).max(5, "At most 5 cc recipients").optional(),
+    // CR/LF stripped because this reaches a mail header. Graph builds the
+    // header from JSON so header injection is not reachable today, but the
+    // property should hold at this layer rather than depend on the transport.
+    subject: z
+      .string()
+      .trim()
+      .min(1, "Add a subject")
+      .max(200)
+      .transform((s) => s.replace(/[\r\n]+/g, " ")),
+    bodyText: z.string().trim().min(1, "Write a message").max(20_000),
+    attachment: z
+      .object({
+        fileName: text(200).min(1),
+        /** base64. Capped at 12MB encoded, matching the old handler. */
+        contentBase64: z.string().max(12 * 1024 * 1024, "That attachment is too large"),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 /* -------------------------------------------------------------- settings */
 
 export const capacityWeightsUpdate = z
