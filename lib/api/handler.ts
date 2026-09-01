@@ -18,12 +18,14 @@ export type Role = "viewer" | "editor" | "admin";
 
 const RANK: Record<Role, number> = { viewer: 1, editor: 2, admin: 3 };
 
-export interface Ctx {
+export interface Ctx<P = Record<string, string>> {
   db: Db;
   user: SessionUser;
   ip: string | null;
   userAgent: string | null;
   req: NextRequest;
+  /** Route params, already awaited — Next 16 hands them over as a promise. */
+  params: P;
 }
 
 export interface AuthOptions {
@@ -31,11 +33,14 @@ export interface AuthOptions {
   role?: Role;
 }
 
-export function withAuth(
+export function withAuth<P = Record<string, string>>(
   opts: AuthOptions,
-  handler: (ctx: Ctx) => Promise<NextResponse>,
+  handler: (ctx: Ctx<P>) => Promise<NextResponse>,
 ) {
-  return async (req: NextRequest): Promise<NextResponse> => {
+  return async (
+    req: NextRequest,
+    routeCtx?: { params?: Promise<P> },
+  ): Promise<NextResponse> => {
     const context = `${req.method} ${new URL(req.url).pathname}`;
     try {
       const db = getDb();
@@ -68,6 +73,7 @@ export function withAuth(
         ip: clientIp(req.headers),
         userAgent: userAgent(req.headers),
         req,
+        params: ((await routeCtx?.params) ?? {}) as P,
       });
     } catch (err) {
       return errorResponse(err, context);
@@ -76,12 +82,15 @@ export function withAuth(
 }
 
 /** Public routes still want the db + client info, without a session. */
-export function withPublic(
+export function withPublic<P = Record<string, string>>(
   handler: (
-    ctx: Omit<Ctx, "user"> & { user: null },
+    ctx: Omit<Ctx<P>, "user"> & { user: null },
   ) => Promise<NextResponse>,
 ) {
-  return async (req: NextRequest): Promise<NextResponse> => {
+  return async (
+    req: NextRequest,
+    routeCtx?: { params?: Promise<P> },
+  ): Promise<NextResponse> => {
     const context = `${req.method} ${new URL(req.url).pathname}`;
     try {
       return await handler({
@@ -90,6 +99,7 @@ export function withPublic(
         ip: clientIp(req.headers),
         userAgent: userAgent(req.headers),
         req,
+        params: ((await routeCtx?.params) ?? {}) as P,
       });
     } catch (err) {
       return errorResponse(err, context);
