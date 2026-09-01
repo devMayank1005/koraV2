@@ -1,5 +1,5 @@
 import { daysDiff } from "@/lib/utils/dates";
-import { SIGNOFF_PHASES } from "./constants";
+import { SIGNOFF_PHASES, PHASES } from "./constants";
 import type { Client, Phase, Rag } from "./types";
 
 /** Implementation progress + health, ported from js/implementation.js:2-6 and :288-310. */
@@ -130,13 +130,33 @@ export function canCompletePhase(
   return { ok: true };
 }
 
-/** Counts per phase name across all modules — drives the phase-funnel tile. */
+/**
+ * Counts of ACTIVELY WORKED phases per phase name — the phase-funnel tile.
+ *
+ * "Actively worked" is exactly `In Progress` or `At Risk`, matching
+ * js/dashboard.js:149. This was originally ported as "anything that is not
+ * Completed or Not Started", which silently also counted both On Holds,
+ * Pending Client, Under Review, Delayed and Cancelled — six statuses that
+ * describe work which is explicitly NOT progressing, in a tile whose whole
+ * point is to show where work is piling up. Every bar was inflated.
+ *
+ * The mistake survived because the golden suite can only diff functions that
+ * exist as named functions in the old source, and this logic is inline inside
+ * `dashboard.js`'s render. tests/golden/dashboard.test.ts closes that gap with
+ * a transcribed reference implementation.
+ *
+ * All nine phases are present in the result, including zeroes, because the
+ * funnel renders a fixed set of rows and a missing key is not the same as a
+ * count of zero.
+ */
 export function phaseFunnel(clients: Client[]): Record<string, number> {
   const out: Record<string, number> = {};
+  for (const name of PHASES) out[name] = 0;
+
   for (const c of clients) {
     for (const m of c.modules ?? []) {
       for (const ph of m.phases ?? []) {
-        if (ph.status === "Completed" || ph.status === "Not Started") continue;
+        if (ph.status !== "In Progress" && ph.status !== "At Risk") continue;
         out[ph.name] = (out[ph.name] ?? 0) + 1;
       }
     }
