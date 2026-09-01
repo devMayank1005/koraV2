@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, lte, ilike, sql } from "drizzle-orm";
-import { appSettings, portfolioSnapshots, auditLog } from "@/lib/db/schema";
+import { appSettings, portfolioSnapshots, auditLog, users } from "@/lib/db/schema";
 import { DEFAULT_CAPACITY_WEIGHTS } from "@/lib/domain/constants";
 import type { AnyDb } from "@/lib/auth/db-types";
 
@@ -167,4 +167,23 @@ export async function listAudit(db: AnyDb, q: AuditQuery) {
   ]);
 
   return { rows, total, limit, offset };
+}
+
+/**
+ * Names and emails, for the digest's assignee matching.
+ *
+ * Deliberately NOT `listUsersForAdmin`: that pulls lockout state and failed
+ * attempt counts into a scheduled job which has no business with them, and a
+ * cron is exactly the kind of caller that quietly grows access nobody reviews.
+ */
+export async function getDigestUserDirectory(
+  db: AnyDb,
+): Promise<{ name: string; email: string }[]> {
+  const rows = await db
+    .select({ name: users.name, email: users.email })
+    .from(users);
+
+  return rows
+    .filter((r): r is { name: string; email: string } => !!r.email)
+    .map((r) => ({ name: r.name, email: r.email }));
 }
