@@ -23,8 +23,8 @@ retro-edit an applied one.
 | 0002 | `0002_v2_schema.sql` | tests | — | pre-existing | As-applied record of the original `sql_v2_migration.sql`. Idempotent. |
 | 0003 | `0003_domain_membership.sql` | tests | — | **2026-08-31** | Additive; safe to apply while the old app runs. Required before backfill. |
 | 0004 | `0004_client_name_ci_unique.sql` | tests | — | **2026-08-31** | **Gate.** Apply only after preflight reports zero duplicate client names. |
-| 0006 | `0006_updated_at_trigger.sql` | tests, local, **production** | 2026-09-01 | applied | Makes `updated_at` a trigger. Leaving it to each statement means forgetting it anywhere silently disables OCC for that entity — writes keep returning 200 while overwriting each other. `before update` only, so the backfill's preserved v1 timestamps on INSERT are untouched and re-running it stays idempotent. |
 | 0005 | `0005_backend_indexes.sql` | tests | — | **2026-08-31** | Additive. Fails if two usernames collide case-insensitively. |
+| 0006 | `0006_updated_at_trigger.sql` | tests, local, **production** | 2026-09-01 | applied | Makes `updated_at` a trigger. Leaving it to each statement means forgetting it anywhere silently disables OCC for that entity — writes keep returning 200 while overwriting each other. `before update` only, so the backfill's preserved v1 timestamps on INSERT are untouched and re-running it stays idempotent. |
 
 ## Order and dependencies
 
