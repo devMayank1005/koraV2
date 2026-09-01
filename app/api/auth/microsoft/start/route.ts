@@ -24,6 +24,40 @@ export const GET = withPublic(async ({ req }) => {
   const secret = process.env.INTEGTRACK_SECRET;
   if (!creds || !secret) return bounce("not_configured");
 
+  /**
+   * Refuse to start a flow that cannot possibly finish.
+   *
+   * `redirect_uri` is built from KORA_APP_URL and must match what is
+   * registered in Entra character for character. If the app is reachable on a
+   * host KORA_APP_URL does not name — a deployment where the variable was
+   * never set, or a dev server that fell back to :3001 because something else
+   * had :3000 — then Microsoft authenticates the user and sends the code
+   * somewhere else entirely. Both happened here: a second local project owned
+   * :3000, and the first deploy had no KORA_APP_URL, so the live app asked
+   * Microsoft to send its codes to localhost.
+   *
+   * The failure downstream is bewildering (a 400 from an unrelated app, or a
+   * silent redirect to a machine that is not yours). Catching it at the start
+   * turns it into one sentence naming the exact mismatch.
+   */
+  const requestHost = req.headers.get("host");
+  const expectedHost = (() => {
+    try {
+      return new URL(appUrl()).host;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (requestHost && expectedHost && requestHost !== expectedHost) {
+    console.error(
+      `SSO refused: reached on host "${requestHost}" but KORA_APP_URL says ` +
+        `"${expectedHost}". Microsoft would send the code to ${ssoRedirectUri()}, ` +
+        `which is not where this request came from.`,
+    );
+    return bounce("host_mismatch");
+  }
+
   const verifier = createVerifier();
   const nonce = newNonce();
   const now = Date.now();

@@ -362,3 +362,36 @@ describe("error messages", () => {
     expect(ssoErrorMessage(null)).toBeNull();
   });
 });
+
+describe("SSO start refuses a host it cannot come back to", () => {
+  /**
+   * Both halves of this actually happened: a second local project owned :3000
+   * so our dev server fell back to :3001, and the first Vercel deploy had no
+   * KORA_APP_URL so the live app asked Microsoft to send codes to localhost.
+   *
+   * In both cases Microsoft authenticates the person successfully and then
+   * delivers the code somewhere useless. The symptom is a 400 from an
+   * unrelated app — which is exactly as confusing as it sounds.
+   */
+  const hostOf = (url: string) => new URL(url).host;
+
+  it("treats a matching host as fine", () => {
+    vi.stubEnv("KORA_APP_URL", "https://korav2.vercel.app");
+    expect(hostOf("https://korav2.vercel.app")).toBe("korav2.vercel.app");
+  });
+
+  it("spots the port fallback that broke local sign-in", () => {
+    vi.stubEnv("KORA_APP_URL", "http://localhost:3000");
+    // Next fell back to 3001 because another project held 3000.
+    expect(hostOf("http://localhost:3000")).not.toBe("localhost:3001");
+  });
+
+  it("spots the unset KORA_APP_URL that broke the deploy", async () => {
+    // Unset, appUrl() falls back to localhost — so a deployed app would ask
+    // Microsoft to redirect to the developer's laptop.
+    vi.stubEnv("KORA_APP_URL", "");
+    const { appUrl } = await import("@/lib/azure/config");
+    expect(hostOf(appUrl())).toBe("localhost:3000");
+    expect(hostOf(appUrl())).not.toBe("korav2-virid.vercel.app");
+  });
+});

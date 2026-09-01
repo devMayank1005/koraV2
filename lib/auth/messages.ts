@@ -20,6 +20,8 @@ export const SSO_ERRORS: Record<string, string> = {
     "Two Kora accounts share that email address, so we cannot tell which is yours. Ask an admin to resolve the duplicate.",
   domain_not_allowed:
     "That Microsoft account is outside your organisation, so it cannot be used to sign in.",
+  host_mismatch:
+    "Microsoft sign-in is misconfigured for this address — KORA_APP_URL does not match the host you are on. Use your username and password.",
   lookup_failed: "Sign-in is temporarily unavailable. Please try again.",
   unexpected_error: "Something went wrong during Microsoft sign-in.",
 };

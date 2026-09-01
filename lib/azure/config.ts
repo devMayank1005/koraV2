@@ -34,7 +34,15 @@ export const GRAPH_ME_URL =
  * sends you hunting for a credentials problem that does not exist.
  */
 export function appUrl(): string {
-  return (process.env.KORA_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  // `||`, not `??`. An env var set to the empty string is functionally unset,
+  // and it is easy to create one that way in a hosting dashboard — but `??`
+  // only catches null and undefined, so an empty value would sail through and
+  // produce a redirect_uri of "/api/auth/microsoft/callback" with no origin.
+  // Entra rejects that, and the error names none of this.
+  // Trim BEFORE the fallback: "  " is truthy, so trimming afterwards would
+  // let a whitespace-only value through and yield an origin-less redirect_uri.
+  const raw = (process.env.KORA_APP_URL ?? "").trim();
+  return (raw || "http://localhost:3000").replace(/\/+$/, "");
 }
 
 /** Must match, character for character, what is registered in Entra. */
