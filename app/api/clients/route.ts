@@ -1,5 +1,8 @@
 import { withAuth, json } from "@/lib/api/handler";
 import { listClients, getClientTrees } from "@/lib/db/queries/clients";
+import { createClient } from "@/lib/db/mutations/clients";
+import { clientCreate } from "@/lib/validation/entities";
+import { created } from "@/lib/api/mutate";
 import { signAttachmentsIn } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -26,3 +29,10 @@ export const GET = withAuth({}, async ({ db, req }) => {
 
   return json({ clients: await listClients(db) });
 });
+
+/** POST /api/clients — create. Editors and above. */
+export const POST = withAuth({ role: "editor" }, (ctx) =>
+  created(ctx, clientCreate, "Create client", "clients", (input) =>
+    createClient(ctx.db, input),
+  ),
+);

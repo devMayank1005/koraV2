@@ -30,7 +30,7 @@ function ask(question, { hidden = false } = {}) {
     }
     // Suppress echo while the password is typed.
     const onData = (char) => {
-      if (["\n", "\r", ""].includes(char.toString())) {
+      if (["\n", "\r", "\u0004"].includes(char.toString())) {
         process.stdin.removeListener("data", onData);
       } else {
         process.stdout.write("\x1b[2K\x1b[200D" + question + "*".repeat(rl.line.length));

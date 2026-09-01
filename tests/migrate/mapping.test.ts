@@ -369,3 +369,37 @@ describe("idempotency", () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
+
+describe("phase id derivation is pinned", () => {
+  /**
+   * These three ids are real rows from production phases_v2, captured with
+   * their module_id and phase_name. All 702 live phase ids came out of this
+   * function, and phase URLs are built from them, so the inputs, their order
+   * and the separator are now part of the stored data — not an implementation
+   * detail. Anything that changes the output orphans every phase.
+   *
+   * The separator in particular was a raw NUL byte in the source, invisible in
+   * an editor and silently deletable. This is what would catch that.
+   */
+  const PRODUCTION_PHASES: [string, string, string][] = [
+    ["mrm24wmluw5i", "Hypercare", "ph_00e4bb9520a938ec3f2a9a8c"],
+    ["ms32l7bxuwky", "UAT Signoff", "ph_00f0eecf9f39704c32cce54b"],
+    ["mrm0x66e50a7", "CRP", "ph_01553d5b52986ac1a5653ab2"],
+  ];
+
+  it("reproduces ids stored in production", () => {
+    for (const [moduleId, phaseName, expected] of PRODUCTION_PHASES) {
+      expect(derivePhaseId(moduleId, phaseName)).toBe(expected);
+    }
+  });
+
+  it("separates its inputs, so a shifted boundary cannot collide", () => {
+    // Without a separator, ("ab","c") and ("a","bc") hash identically and two
+    // different phases collapse onto one primary key.
+    expect(derivePhaseId("ab", "c")).not.toBe(derivePhaseId("a", "bc"));
+  });
+
+  it("is stable across calls", () => {
+    expect(derivePhaseId("md_x", "Go Live")).toBe(derivePhaseId("md_x", "Go Live"));
+  });
+});

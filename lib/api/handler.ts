@@ -131,6 +131,14 @@ function assertSameOrigin(req: NextRequest): void {
   }
 }
 
-export function json(body: unknown, init?: ResponseInit): NextResponse {
-  return NextResponse.json(body, init);
+/**
+ * The single JSON responder.
+ *
+ * Takes a status number rather than a ResponseInit because a second helper
+ * with a different second argument existed briefly and was picked by accident
+ * twice — `json(body, 201)` silently meaning `{}` is the kind of mistake that
+ * only shows up as a 200 where a 201 was intended.
+ */
+export function json(body: unknown, status = 200): NextResponse {
+  return NextResponse.json(body, { status });
 }

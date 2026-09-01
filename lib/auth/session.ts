@@ -24,6 +24,8 @@ export type SessionFailure =
 export interface SessionUser {
   id: string;
   username: string;
+  /** Display name. Written into activity feeds as `addedBy`. */
+  name: string;
   role: string;
   tokenVersion: number;
 }
@@ -49,13 +51,16 @@ export async function validateSession(
   if (!payload) return { valid: false, reason: "bad_signature" };
   if (isExpired(payload, now)) return { valid: false, reason: "expired" };
 
-  let row: { tokenVersion: number; role: string; username: string } | undefined;
+  let row:
+    | { tokenVersion: number; role: string; username: string; name: string }
+    | undefined;
   try {
     const rows = await db
       .select({
         tokenVersion: users.tokenVersion,
         role: users.role,
         username: users.username,
+        name: users.name,
       })
       .from(users)
       .where(eq(users.id, payload.id))
@@ -80,6 +85,7 @@ export async function validateSession(
     user: {
       id: payload.id,
       username: row.username,
+      name: row.name,
       // ALWAYS the freshly-read role, never the one embedded in the token —
       // a demotion has to bite immediately, not in seven days.
       role: row.role,

@@ -23,7 +23,7 @@ export const POST = withPublic(async ({ db, ip, userAgent, req }) => {
   if (!result.ok) {
     return json(
       { error: result.error, ...(result.lockedUntil ? { lockedUntil: result.lockedUntil } : {}) },
-      { status: result.status },
+      result.status,
     );
   }
 

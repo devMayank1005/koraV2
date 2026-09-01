@@ -1,4 +1,7 @@
 import { withAuth, json } from "@/lib/api/handler";
+import { createUser } from "@/lib/db/mutations/users";
+import { userCreate } from "@/lib/validation/entities";
+import { created } from "@/lib/api/mutate";
 import { listUsers } from "@/lib/db/queries/users";
 
 export const runtime = "nodejs";
@@ -11,4 +14,11 @@ export const runtime = "nodejs";
  */
 export const GET = withAuth({}, async ({ db, user }) =>
   json({ users: await listUsers(db, user.role) }),
+);
+
+/** POST /api/users — admin only. Plaintext in, bcrypt cost 12 stored. */
+export const POST = withAuth({ role: "admin" }, (ctx) =>
+  created(ctx, userCreate, "Create user", "users", (input) =>
+    createUser(ctx.db, input),
+  ),
 );

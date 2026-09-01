@@ -70,3 +70,23 @@ Swastik (Implementation), Altius Infrastructure, Anand, Interglobe Aviation and
 NabFID (AMS). Without migration 0003 every one of them would have silently
 disappeared from that view at cutover. This is why the flags exist, and why
 `check-membership` is worth re-running before the final cutover.
+
+## 0006_updated_at_trigger.sql — NOT YET APPLIED
+
+Pending your approval; run `pnpm migrate:apply` when you want it in.
+
+Not urgent: nothing writes to the v2 tables in production yet, so the trigger
+changes no current behaviour. It **must** be applied before cutover, because
+the new app's optimistic concurrency depends on it.
+
+**What it does.** `updated_at` is the OCC token: a GET hands it out as `_v`, a
+PATCH echoes it in `If-Match`, and the UPDATE matches on equality. The v2
+tables default it on INSERT and leave it alone on UPDATE, so advancing it was
+left to every individual statement. Forgetting it anywhere does not fail
+loudly — the write succeeds, the token stops changing, and from then on
+concurrent edits to that entity silently overwrite each other while `If-Match`
+keeps returning 200. A trigger cannot be forgotten, and it also stops a client
+pinning the column by sending its own value.
+
+Additive, idempotent, `before update` only — the backfill preserves v1
+timestamps on INSERT and is unaffected, so re-running it stays idempotent.

@@ -39,10 +39,39 @@ function corrId(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
+/**
+ * Unwraps a driver error out of its wrapper.
+ *
+ * Drizzle raises a `DrizzleQueryError` and hangs the real postgres error off
+ * `cause`, so reading `.code` off the thrown object finds nothing. Without
+ * this, every constraint violation fell through to the generic 500 handler:
+ * a duplicate client name returned "Something went wrong" and a correlation
+ * id instead of "A client with that name already exists."
+ */
+function pgError(err: unknown): { code?: string; constraint?: string } {
+  let node = err;
+  for (let depth = 0; node && depth < 5; depth++) {
+    const c = node as {
+      code?: string;
+      cause?: unknown;
+      // postgres.js spells it constraint_name; node-postgres and PGlite use
+      // constraint. Reading only one means the friendly message appears under
+      // one driver and the generic 500 under the other — which is worse than
+      // either, because it makes the tests disagree with production.
+      constraint_name?: string;
+      constraint?: string;
+    };
+    if (typeof c.code === "string") {
+      return { code: c.code, constraint: c.constraint_name ?? c.constraint };
+    }
+    node = c.cause;
+  }
+  return {};
+}
+
 /** Postgres error codes worth translating into something a person can act on. */
 function fromPgCode(err: unknown): AppError | null {
-  const code = (err as { code?: string })?.code;
-  const constraint = (err as { constraint_name?: string })?.constraint_name;
+  const { code, constraint } = pgError(err);
 
   if (code === "23505") {
     if (constraint?.includes("name_ci")) {
