@@ -7,13 +7,14 @@ import {
   phases,
   amsWorkLog,
 } from "@/lib/db/schema";
-import { PHASES, SIGNOFF_PHASES } from "@/lib/domain/constants";
+import { PHASES } from "@/lib/domain/constants";
+import { canCompletePhase } from "@/lib/domain/implementation";
 import { newId, derivePhaseId } from "@/lib/validation/ids";
 import { vToken } from "@/lib/db/occ";
 import { updateOrThrow, archiveOrThrow } from "./core";
 import { badRequest, notFound } from "@/lib/api/errors";
 import type { AnyDb } from "@/lib/auth/db-types";
-import type { ActivityEntry } from "@/lib/domain/types";
+import type { ActivityEntry, Phase } from "@/lib/domain/types";
 import type { z } from "zod";
 import type {
   integrationCreate,
@@ -257,15 +258,23 @@ export async function updatePhase(
 
   if (!existing) throw notFound("That phase no longer exists");
 
-  if (patch.status === "Completed" && SIGNOFF_PHASES.includes(existing.phaseName)) {
-    const hasDocument = (existing.activityLog ?? []).some(
-      (entry) => entry?.attachment?.storagePath,
-    );
-    if (!hasDocument) {
-      throw badRequest(
-        `${existing.phaseName} needs a signed document attached to an update before it can be marked complete.`,
-        { code: "signoff_document_required", phase: existing.phaseName },
-      );
+  if (patch.status === "Completed") {
+    // The rule itself lives in lib/domain — one definition, golden-tested
+    // against the original app. It was reimplemented inline here, which meant
+    // the same business rule existed twice and was free to drift; the domain
+    // copy is the one the frontend will also call before enabling the button.
+    const gate = canCompletePhase({
+      id,
+      name: existing.phaseName,
+      status: "Completed",
+      updates: existing.activityLog ?? [],
+    } as unknown as Phase);
+
+    if (!gate.ok) {
+      throw badRequest(gate.reason, {
+        code: "signoff_document_required",
+        phase: existing.phaseName,
+      });
     }
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Fragment } from "react";
 
 /**
@@ -65,4 +66,48 @@ export function Breadcrumbs({
       {body}
     </nav>
   );
+}
+
+/**
+ * Breadcrumbs derived from the URL.
+ *
+ * Rendered by the app chrome so every tracker screen gets them without opting
+ * in — the previous version exported a `Breadcrumbs` component that nothing
+ * imported, so the app had none at all.
+ *
+ * Ids rather than names, for now. Resolving a client id to "Aster Retail
+ * Group" needs the client tree, and fetching it here would put a request in
+ * the chrome on every navigation for a label. The screens have that data
+ * already and will pass richer crumbs in as they are built; this is the
+ * fallback, not the destination.
+ */
+export function RouteBreadcrumbs() {
+  const pathname = usePathname();
+  const segments = pathname.split("/").filter(Boolean);
+
+  // The dashboard is the root; a single crumb saying "Dashboard" above the
+  // dashboard is noise.
+  if (!segments.length || segments[0] === "dashboard") return null;
+
+  const SECTIONS: Record<string, string> = {
+    integrations: "Integrations",
+    implementation: "Implementation",
+    ams: "AMS & Support",
+    admin: "Admin",
+  };
+
+  const [section, ...rest] = segments;
+  const crumbs: Crumb[] = [
+    { label: "Dashboard", href: "/dashboard" },
+    { label: SECTIONS[section] ?? section, href: `/${section}` },
+  ];
+
+  for (const [i, seg] of rest.entries()) {
+    crumbs.push({
+      label: decodeURIComponent(seg),
+      href: i < rest.length - 1 ? `/${section}/${rest.slice(0, i + 1).join("/")}` : undefined,
+    });
+  }
+
+  return <Breadcrumbs crumbs={crumbs} />;
 }

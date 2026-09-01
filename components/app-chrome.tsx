@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Menu, X, Eye, WifiOff } from "lucide-react";
 import { Sidebar, type SidebarUser } from "@/components/sidebar";
+import { RouteBreadcrumbs } from "@/components/breadcrumbs";
 import { useUi } from "@/lib/store/ui";
 import { Providers } from "@/components/providers";
 
@@ -112,6 +113,7 @@ export function AppChrome({
             </span>
           </div>
 
+          <RouteBreadcrumbs />
           <main className="min-w-0 flex-1">{children}</main>
         </div>
       </div>
@@ -123,22 +125,27 @@ export function AppChrome({
  * Online/offline, read from the browser rather than mirrored into state.
  *
  * `navigator.onLine` is external state, so it goes through the same
- * useSyncExternalStore treatment as the theme class — an effect that copies it
- * into useState would tear and would trip React 19's set-state-in-effect rule.
+ * useSyncExternalStore treatment as the theme class. An effect that copied it
+ * into useState would tear on the first paint and would trip React 19's
+ * set-state-in-effect rule — which the previous version of this function did,
+ * under a comment claiming it did not.
+ *
+ * The server snapshot is `false`: rendering "you are offline" into HTML that
+ * by definition arrived over the network would be absurd.
  */
+function subscribeOnline(onChange: () => void): () => void {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+
 function useOffline(): boolean {
-  const [offline, setOffline] = useState(false);
-
-  useEffect(() => {
-    const sync = () => setOffline(!navigator.onLine);
-    sync();
-    window.addEventListener("online", sync);
-    window.addEventListener("offline", sync);
-    return () => {
-      window.removeEventListener("online", sync);
-      window.removeEventListener("offline", sync);
-    };
-  }, []);
-
-  return offline;
+  return useSyncExternalStore(
+    subscribeOnline,
+    () => !navigator.onLine,
+    () => false,
+  );
 }

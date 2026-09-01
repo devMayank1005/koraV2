@@ -28,11 +28,37 @@ import type { userCreate, userUpdate } from "@/lib/validation/entities";
  * one you knew. Only plaintext is accepted now, and only ever hashed here.
  */
 
-/** Fails when a write would leave the system with no admin. */
+/**
+ * Fails when a write would leave the system with no admin.
+ *
+ * THE ADVISORY LOCK IS LOAD-BEARING, and moving this check inside the
+ * transaction was not sufficient on its own.
+ *
+ * Under READ COMMITTED — Postgres's default — two transactions demoting two
+ * DIFFERENT admins never contend: each counts the other as still an admin,
+ * because neither can see the other's uncommitted write. Both pass, both
+ * commit, and the organisation is left with nobody who can reach the admin
+ * panel. They touch different rows, so the If-Match checks do not collide
+ * either. This is the exact failure the old app had; keeping the check
+ * in-transaction narrowed the window without closing it.
+ *
+ * `FOR UPDATE` on the admin rows would close it but invites a deadlock: A
+ * demoting admin1 locks admin2 while B demoting admin2 locks admin1. A
+ * transaction-scoped advisory lock on one fixed key serialises every
+ * role-changing write instead, with no ordering to get wrong and automatic
+ * release on commit or rollback.
+ *
+ * Role changes are rare — a handful a year — so serialising them costs
+ * nothing worth measuring.
+ */
+const ADMIN_ROLE_LOCK = 8_140_2701; // arbitrary, fixed; only identity matters
+
 async function assertAdminRemains(
   tx: AnyDb,
   excludingUserId: string,
 ): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${ADMIN_ROLE_LOCK})`);
+
   const [{ remaining }] = await tx
     .select({ remaining: sql<number>`count(*)::int` })
     .from(users)

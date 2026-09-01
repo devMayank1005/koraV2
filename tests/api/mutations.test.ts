@@ -14,7 +14,9 @@ import {
   createMilestone, createModule, archiveModule, updatePhase,
   createWorkLogEntry, updateWorkLogEntry,
 } from "@/lib/db/mutations/tracker";
-import { appendActivity, editActivity, deleteActivity } from "@/lib/db/mutations/activity";
+import {
+  appendActivity, editActivity, deleteActivity, writeAtIndex,
+} from "@/lib/db/mutations/activity";
 import { createUser, updateUser, deleteUser } from "@/lib/db/mutations/users";
 import { getClientTree } from "@/lib/db/queries/clients";
 import { PHASES } from "@/lib/domain/constants";
@@ -418,6 +420,70 @@ describe("activity feeds", () => {
     expect(row.activityLog.map((e) => e.update)).toEqual(["b"]);
   });
 
+  it("REFUSES A WRITE WHOSE ENTRY MOVED, rather than hitting a stranger's", async () => {
+    /**
+     * The race, demonstrated before it was fixed:
+     *
+     *   Meera opens the edit box. locate() resolves her entry to index 0.
+     *   Before the write lands, Vikram posts — and appendActivity PREPENDS, so
+     *   Vikram takes index 0 and Meera shifts to 1. The write then targets
+     *   index 0 and replaces VIKRAM'S comment, text and history, with Meera's
+     *   edit. His words gone, no error, no trace.
+     *
+     * deleteActivity always guarded this; editActivity did not, and the
+     * comment above it asserted the race was impossible.
+     *
+     * This drives `writeAtIndex` — the real function both paths call — with
+     * the stale index locate() would have returned. An earlier version of this
+     * test re-implemented the guard SQL inline, which meant deleting the guard
+     * from production left it passing. It is exported precisely so this test
+     * cannot drift from the code again.
+     */
+    const id = await feed();
+    await appendActivity(db, "integration", id, ADMIN, { update: "MEERA ORIGINAL" });
+    const staleIndex = 0; // what locate() would have returned for Meera
+
+    await appendActivity(db, "integration", id, EDITOR, { update: "VIKRAM COMMENT" });
+
+    const meera = (await db.select().from(integrations).where(eq(integrations.id, id)))[0]
+      .activityLog.find((e) => e.update === "MEERA ORIGINAL")!;
+
+    const hit = await writeAtIndex(db, integrations, id, staleIndex, meera.id, {
+      activityLog: sql`jsonb_set(${integrations.activityLog}, ${`{${staleIndex}}`}::text[],
+        ${JSON.stringify({ ...meera, update: "MEERA EDITED" })}::jsonb, false)`,
+    });
+
+    expect(hit).toBe(false);
+
+    const [row] = await db.select().from(integrations).where(eq(integrations.id, id));
+    expect(row.activityLog.map((e) => e.update))
+      .toEqual(["VIKRAM COMMENT", "MEERA ORIGINAL"]);
+  });
+
+  it("allows the write when the entry is still where it was", async () => {
+    // The other half — the guard must not reject a legitimate edit.
+    const id = await feed();
+    const mine = await appendActivity(db, "integration", id, ADMIN, { update: "mine" });
+    const hit = await writeAtIndex(db, integrations, id, 0, mine.entry.id, {
+      activityLog: sql`jsonb_set(${integrations.activityLog}, '{0}'::text[],
+        ${JSON.stringify({ ...mine.entry, update: "edited" })}::jsonb, false)`,
+    });
+    expect(hit).toBe(true);
+  });
+
+  it("edits the right entry after someone else posts", async () => {
+    // The same situation through the real function: editActivity re-locates,
+    // so a post before the call is harmless. This is what must keep working.
+    const id = await feed();
+    const mine = await appendActivity(db, "integration", id, ADMIN, { update: "mine" });
+    await appendActivity(db, "integration", id, EDITOR, { update: "theirs" });
+
+    await editActivity(db, "integration", id, mine.entry.id, ADMIN, { update: "mine, edited" });
+
+    const [row] = await db.select().from(integrations).where(eq(integrations.id, id));
+    expect(row.activityLog.map((e) => e.update)).toEqual(["theirs", "mine, edited"]);
+  });
+
   it("refuses an entry that moved rather than deleting the wrong one", async () => {
     const id = await feed();
     const a = await appendActivity(db, "integration", id, ADMIN, { update: "a" });
@@ -492,6 +558,22 @@ describe("user administration", () => {
     const [row] = await db.select().from(users).where(eq(users.id, "u1"));
     expect(row.role).toBe("admin");
   });
+
+  /**
+   * The CONCURRENT last-admin race is not tested here, on purpose.
+   *
+   * PGlite is a single connection, so two transactions serialise no matter
+   * what the code does — a passing test would prove nothing. That is precisely
+   * how the bug survived the first time: the guard was moved inside a
+   * transaction, the sequential test below went green, and everyone assumed
+   * the race was closed. It was not; under READ COMMITTED two transactions
+   * demoting two different admins never contend.
+   *
+   * The real proof needs two connections and lives in
+   * `scripts/verify-admin-lock.ts` (`pnpm verify:admin-lock`), which runs
+   * against local Postgres and demonstrates both halves: without the advisory
+   * lock the run ends with ZERO admins, with it one demotion is refused.
+   */
 
   it("allows the demotion once another admin exists", async () => {
     await createUser(db, {

@@ -93,9 +93,24 @@ export async function appendActivity(
 /**
  * Edits one entry in place, keeping the previous text as history.
  *
- * Scoped by index inside a single statement using jsonb_set, so a concurrent
- * append to the same feed cannot clobber the edit and the edit cannot clobber
- * the append.
+ * THE ID RE-CHECK IN THE WHERE CLAUSE IS THE WHOLE SAFETY PROPERTY.
+ *
+ * `locate()` resolves the entry's array index, and the write then targets that
+ * index — two statements, with a window between them. `appendActivity`
+ * PREPENDS, so a post landing in that window shifts every index by one and the
+ * edit lands on somebody else's comment, replacing its text and its history.
+ * That is silent data loss, and it was reachable: an earlier version of this
+ * function had no such check while `deleteActivity` did, and the comment here
+ * asserted the race was impossible.
+ *
+ * Re-checking the id at that index inside the same statement turns the race
+ * into "nothing happened" — the row count comes back zero and the caller is
+ * told to reload, rather than someone else's words quietly disappearing.
+ *
+ * This is also why an entry edit takes no `If-Match`: the parent's OCC token
+ * changes on every append, so requiring it would make editing your own comment
+ * fail whenever a colleague happened to post. The id guard is concurrency
+ * control at the right granularity — the entry, not the feed.
  *
  * Only the author or an admin may edit. The old app enforced this by hiding
  * the button, which is not enforcement.
@@ -133,12 +148,15 @@ export async function editActivity(
         : { attachment: input.attachment }),
   };
 
-  await db
-    .update(table)
-    .set({
-      activityLog: sql`jsonb_set(${table.activityLog}, ${`{${index}}`}::text[], ${JSON.stringify(updated)}::jsonb, false)`,
-    })
-    .where(and(eq(table.id, parentId), eq(table.archived, false)));
+  const hit = await writeAtIndex(db, table, parentId, index, entryId, {
+    activityLog: sql`jsonb_set(${table.activityLog}, ${`{${index}}`}::text[], ${JSON.stringify(updated)}::jsonb, false)`,
+  });
+
+  if (!hit) {
+    throw badRequest(
+      "That entry moved while you were editing it. Reload and try again.",
+    );
+  }
 
   return { entry: updated, _v: await tokenFor(db, table, parentId) };
 }
@@ -165,25 +183,16 @@ export async function deleteActivity(
 
   assertMayModify(log[index], user);
 
-  const rows = await db
-    .update(table)
-    // ::int on both operands is load-bearing. `jsonb - integer` removes the
-    // element at that index; `jsonb - text` removes a KEY, which on an array
-    // matches nothing. A bound parameter arrives untyped, so without the cast
-    // Postgres resolves the text overload and the statement silently does
-    // nothing — or, worse, the guard below never matches and every delete is
-    // refused.
-    .set({ activityLog: sql`${table.activityLog} - ${index}::int` })
-    .where(
-      and(
-        eq(table.id, parentId),
-        eq(table.archived, false),
-        sql`${table.activityLog} -> ${index}::int ->> 'id' = ${entryId}`,
-      ),
-    )
-    .returning({ id: table.id });
+  // ::int on both operands is load-bearing. `jsonb - integer` removes the
+  // element at that index; `jsonb - text` removes a KEY, which on an array
+  // matches nothing. A bound parameter arrives untyped, so without the cast
+  // Postgres resolves the text overload and the statement silently does
+  // nothing.
+  const hit = await writeAtIndex(db, table, parentId, index, entryId, {
+    activityLog: sql`${table.activityLog} - ${index}::int`,
+  });
 
-  if (!rows.length) {
+  if (!hit) {
     throw badRequest(
       "That entry moved while you were deleting it. Reload and try again.",
     );
@@ -193,6 +202,45 @@ export async function deleteActivity(
 }
 
 /* ------------------------------------------------------------------ shared */
+
+/**
+ * Writes to one entry, but only if that entry is STILL at the index we
+ * resolved. Returns false if it moved.
+ *
+ * Both edit and delete go through here, and they must: the index comes from a
+ * separate `locate()` read, and `appendActivity` PREPENDS, so any post landing
+ * between the two statements shifts every index by one. Without the re-check
+ * an edit rewrites a stranger's comment and a delete removes the wrong one —
+ * silently, with no error and no trace.
+ *
+ * Exported so a test can drive it with a deliberately stale index. That is not
+ * a convenience: PGlite runs on a single connection, so the interleaving
+ * cannot be produced end-to-end through `editActivity`, and a test that
+ * re-implements this SQL would prove the pattern works without proving
+ * production uses it.
+ */
+export async function writeAtIndex(
+  db: AnyDb,
+  table: FeedTable,
+  parentId: string,
+  index: number,
+  entryId: string,
+  values: Record<string, unknown>,
+): Promise<boolean> {
+  const rows = await db
+    .update(table)
+    .set(values)
+    .where(
+      and(
+        eq(table.id, parentId),
+        eq(table.archived, false),
+        sql`${table.activityLog} -> ${index}::int ->> 'id' = ${entryId}`,
+      ),
+    )
+    .returning({ id: table.id });
+
+  return rows.length > 0;
+}
 
 async function locate(
   db: AnyDb,
