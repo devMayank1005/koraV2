@@ -344,3 +344,53 @@ describe("request handling", () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe("deployment misconfiguration is caught, not hidden", () => {
+  /**
+   * The mistake this exists for, which took two rounds to diagnose:
+   * `.env.local` deliberately points DATABASE_URL at a local Postgres so that
+   * building screens never touches live client data. Copying that file
+   * verbatim into Vercel is the obvious next step and the wrong one — and the
+   * symptom is every route returning a generic 500 while the SSO callback
+   * bounces to "sign-in is temporarily unavailable". Neither mentions the
+   * database, or the URL, or the environment.
+   */
+  const LOCALHOST_URLS = [
+    "postgresql://mayank@localhost:5432/kora_dev",
+    "postgresql://u:p@127.0.0.1:5432/db",
+    "postgresql://u:p@[::1]:5432/db",
+  ];
+
+  const looksLocal = (url: string) =>
+    /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url);
+
+  it("recognises every spelling of a local database", () => {
+    for (const url of LOCALHOST_URLS) {
+      expect(looksLocal(url)).toBe(true);
+    }
+  });
+
+  it("does not mistake a real host for a local one", () => {
+    // The pooler hostname must never trip this, or production refuses to boot.
+    for (const url of [
+      "postgresql://postgres.ref:pw@aws-1-ap-south-1.pooler.supabase.com:6543/postgres",
+      "postgresql://u:p@db.example.com:5432/x",
+      // Contains the word but is not the host.
+      "postgresql://u:p@localhost.example.com:5432/x",
+    ]) {
+      expect(looksLocal(url)).toBe(false);
+    }
+  });
+
+  it("health reports the localhost database rather than just failing", async () => {
+    vi.stubEnv("DATABASE_URL", "postgresql://mayank@localhost:5432/kora_dev");
+    vi.stubEnv("KORA_APP_URL", "http://localhost:3000");
+
+    const { GET: health } = await import("@/app/api/health/route");
+    const body = await (await health()).json();
+
+    expect(body.checks.database).toContain("LOCALHOST");
+    expect(body.checks.appUrl).toContain("LOCALHOST");
+    expect(body.ok).toBe(false);
+  });
+});

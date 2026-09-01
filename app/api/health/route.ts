@@ -46,9 +46,31 @@ export async function GET() {
       : "MISSING";
   checks.mailSender = present("AZURE_DEFAULT_MAIL_SENDER");
 
+  // AFTER every present() call, deliberately: these are more specific than
+  // "configured" and must not be overwritten by it. An earlier ordering had
+  // present() clobber the appUrl warning two lines later.
+  // The specific mistake that took two rounds to find: .env.local copied
+  // verbatim into Vercel, so the deployed app pointed at a laptop.
+  const dbUrl = process.env.DATABASE_URL ?? "";
+  if (dbUrl && /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(dbUrl)) {
+    checks.database = "points at LOCALHOST — .env.local copied into the deployment?";
+  }
+
+  const appHost = (() => {
+    try {
+      return new URL(process.env.KORA_APP_URL ?? "").host;
+    } catch {
+      return "";
+    }
+  })();
+  if (appHost.startsWith("localhost")) {
+    checks.appUrl = "points at LOCALHOST — SSO will redirect to a laptop";
+  }
+
+
   const healthy =
     checks.database.startsWith("ok") &&
-    !Object.values(checks).includes("MISSING");
+    !Object.values(checks).some((v) => v.includes("MISSING") || v.includes("LOCALHOST"));
 
   return NextResponse.json(
     { ok: healthy, checks },

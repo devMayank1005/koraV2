@@ -53,6 +53,32 @@ export function getDb(): Db {
   // fallback would mean running the app against live data whenever the app's
   // own variable was missing, which is exactly when you least expect it.
   const url = process.env.DATABASE_URL;
+
+  /**
+   * A localhost database in a deployed environment is always a mistake.
+   *
+   * `.env.local` deliberately points DATABASE_URL at a local Postgres, so that
+   * building screens never writes to the client data the v1 app is still
+   * serving. Copying that file wholesale into a hosting dashboard is the
+   * obvious next step and the wrong one — and the symptom is terrible: every
+   * route returns a generic 500, and the SSO callback bounces to "sign-in is
+   * temporarily unavailable", neither of which mentions the database.
+   *
+   * Refusing here turns a confusing outage into one sentence naming the cause.
+   */
+  if (
+    url &&
+    process.env.NODE_ENV === "production" &&
+    /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url)
+  ) {
+    throw new Error(
+      "DATABASE_URL points at localhost, but this is a production build.\n" +
+        "  A deployed app cannot reach your machine. This is almost always\n" +
+        "  .env.local copied verbatim into the hosting environment.\n" +
+        "  Use the Supabase TRANSACTION pooler (port 6543) instead.",
+    );
+  }
+
   if (!url) {
     throw new Error(
       "DATABASE_URL is not set.\n" +
