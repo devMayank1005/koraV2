@@ -98,8 +98,18 @@ export async function resolveSsoUser(
       )
       // TWO, not one. See below.
       .limit(2) as GateUser[];
-  } catch {
+  } catch (err) {
     // Fail closed: an access-control decision that cannot be made is a denial.
+    //
+    // But LOG IT. This branch swallowed the error entirely, so a deployment
+    // whose DATABASE_URL was wrong showed users "Sign-in is temporarily
+    // unavailable" and left no trace of why — diagnosing it needed a probe
+    // from outside the app. The person signing in still gets the generic
+    // message; the operator gets the cause.
+    console.error(
+      "SSO gate: user lookup failed —",
+      err instanceof Error ? err.message : String(err),
+    );
     return { ok: false, code: "lookup_failed" };
   }
 
