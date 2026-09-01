@@ -18,6 +18,8 @@ export const SSO_ERRORS: Record<string, string> = {
   no_email: "Your Microsoft account has no email address, so we cannot match it.",
   sso_ambiguous:
     "Two Kora accounts share that email address, so we cannot tell which is yours. Ask an admin to resolve the duplicate.",
+  domain_not_allowed:
+    "That Microsoft account is outside your organisation, so it cannot be used to sign in.",
   lookup_failed: "Sign-in is temporarily unavailable. Please try again.",
   unexpected_error: "Something went wrong during Microsoft sign-in.",
 };

@@ -200,7 +200,7 @@ describe("graph transport", () => {
     vi.stubEnv("AZURE_CLIENT_ID", "id");
     vi.stubEnv("AZURE_CLIENT_SECRET", "secret");
     vi.stubEnv("AZURE_TENANT_ID", "tenant");
-    vi.stubEnv("AZURE_MAIL_SENDER", "kora@kognoz.com");
+    vi.stubEnv("AZURE_DEFAULT_MAIL_SENDER", "kora@kognoz.com");
 
     const delays: number[] = [];
     let sendCalls = 0;
@@ -231,7 +231,7 @@ describe("graph transport", () => {
     vi.stubEnv("AZURE_CLIENT_ID", "id");
     vi.stubEnv("AZURE_CLIENT_SECRET", "secret");
     vi.stubEnv("AZURE_TENANT_ID", "tenant");
-    vi.stubEnv("AZURE_MAIL_SENDER", "kora@kognoz.com");
+    vi.stubEnv("AZURE_DEFAULT_MAIL_SENDER", "kora@kognoz.com");
 
     let sendCalls = 0;
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
@@ -253,7 +253,7 @@ describe("graph transport", () => {
     vi.stubEnv("AZURE_CLIENT_ID", "id");
     vi.stubEnv("AZURE_CLIENT_SECRET", "secret");
     vi.stubEnv("AZURE_TENANT_ID", "tenant");
-    vi.stubEnv("AZURE_MAIL_SENDER", "kora@kognoz.com");
+    vi.stubEnv("AZURE_DEFAULT_MAIL_SENDER", "kora@kognoz.com");
 
     let sendCalls = 0;
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
@@ -276,7 +276,7 @@ describe("graph transport", () => {
     vi.stubEnv("AZURE_CLIENT_ID", "id");
     vi.stubEnv("AZURE_CLIENT_SECRET", "secret");
     vi.stubEnv("AZURE_TENANT_ID", "tenant");
-    vi.stubEnv("AZURE_MAIL_SENDER", "kora@kognoz.com");
+    vi.stubEnv("AZURE_DEFAULT_MAIL_SENDER", "kora@kognoz.com");
 
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       if (String(url).includes("/oauth2/")) return okToken();

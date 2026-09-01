@@ -7,7 +7,7 @@ import * as schema from "@/lib/db/schema";
 import { users } from "@/lib/db/schema";
 import { createVerifier, challengeFor, newNonce, nonceMatches } from "@/lib/auth/microsoft/pkce";
 import { signState, verifyState, safeNext, SSO_STATE_TTL_MS } from "@/lib/auth/microsoft/state";
-import { resolveSsoUser } from "@/lib/auth/microsoft/gate";
+import { resolveSsoUser, domainAllowed, allowedDomains } from "@/lib/auth/microsoft/gate";
 import { exchangeCode, fetchGraphMe, SSO_SCOPE } from "@/lib/auth/microsoft/exchange";
 import { signToken, buildPayload } from "@/lib/auth/token";
 import { ssoErrorMessage, SSO_ERRORS } from "@/lib/auth/messages";
@@ -219,6 +219,53 @@ describe("the never-provision gate", () => {
 
     expect((await resolveSsoUser(db, "")).ok).toBe(false);
     expect((await resolveSsoUser(db, "   ")).ok).toBe(false);
+  });
+
+  it("refuses an account outside the allowed domain", async () => {
+    // Redundant with the user-table match on its own — but it is the guard
+    // against the mistake one level up: an admin adding a contractor or a
+    // client contact to `users`, who could then sign in with their own
+    // Microsoft account.
+    vi.stubEnv("AZURE_ALLOWED_DOMAIN", "kognozconsulting.com");
+    await seed([{ id: "u1", username: "outsider", name: "Outsider",
+      email: "someone@gmail.com", role: "admin", passwordHash: "$2b$12$x" }]);
+
+    expect(await resolveSsoUser(db, "someone@gmail.com"))
+      .toEqual({ ok: false, code: "domain_not_allowed" });
+  });
+
+  it("still admits an account inside the allowed domain", async () => {
+    vi.stubEnv("AZURE_ALLOWED_DOMAIN", "kognozconsulting.com");
+    await seed([{ id: "u1", username: "meera", name: "Meera",
+      email: "meera@kognozconsulting.com", role: "admin", passwordHash: "$2b$12$x" }]);
+
+    expect((await resolveSsoUser(db, "MEERA@KognozConsulting.com")).ok).toBe(true);
+  });
+
+  it("matches the domain exactly, never as a suffix", () => {
+    // Suffix matching would admit `notkognozconsulting.com`, which is the
+    // exact trick this exists to stop.
+    vi.stubEnv("AZURE_ALLOWED_DOMAIN", "kognozconsulting.com");
+    expect(domainAllowed("a@kognozconsulting.com")).toBe(true);
+    expect(domainAllowed("a@notkognozconsulting.com")).toBe(false);
+    expect(domainAllowed("a@kognozconsulting.com.evil.com")).toBe(false);
+    expect(domainAllowed("a@sub.kognozconsulting.com")).toBe(false);
+    expect(domainAllowed("no-at-sign")).toBe(false);
+  });
+
+  it("allows every domain when the variable is unset", () => {
+    // The right default for anyone who has not thought about it — the
+    // user-table gate is still doing the real work.
+    vi.stubEnv("AZURE_ALLOWED_DOMAIN", "");
+    expect(allowedDomains()).toEqual([]);
+    expect(domainAllowed("anyone@anywhere.com")).toBe(true);
+  });
+
+  it("accepts a comma-separated list, with or without a leading @", () => {
+    vi.stubEnv("AZURE_ALLOWED_DOMAIN", " kognozconsulting.com , @konverz.ai ");
+    expect(allowedDomains()).toEqual(["kognozconsulting.com", "konverz.ai"]);
+    expect(domainAllowed("a@konverz.ai")).toBe(true);
+    expect(domainAllowed("a@elsewhere.com")).toBe(false);
   });
 
   it("fails closed when the lookup itself errors", async () => {

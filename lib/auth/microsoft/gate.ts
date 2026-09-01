@@ -17,7 +17,48 @@ import type { AnyDb } from "@/lib/auth/db-types";
 
 export type GateResult =
   | { ok: true; user: GateUser }
-  | { ok: false; code: "not_authorized" | "sso_ambiguous" | "lookup_failed" };
+  | {
+      ok: false;
+      code:
+        | "not_authorized"
+        | "sso_ambiguous"
+        | "lookup_failed"
+        | "domain_not_allowed";
+    };
+
+/**
+ * Optional second gate: the Entra account's email must sit at an allowed domain.
+ *
+ * Strictly speaking this is redundant — the check below already requires a
+ * matching row in `users`, so an outside account cannot get in regardless. It
+ * earns its place as the guard against the mistake ONE LEVEL UP: an admin
+ * adding a contractor or a client contact to the users table, at which point
+ * that person can sign in with their own Microsoft account and the
+ * never-provision gate happily lets them.
+ *
+ * Comma-separated, so a second domain after an acquisition is a config change.
+ * Unset means no domain restriction, which is the correct default for anyone
+ * who has not thought about it.
+ */
+export function allowedDomains(): string[] {
+  return (process.env.AZURE_ALLOWED_DOMAIN ?? "")
+    .split(",")
+    .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
+    .filter(Boolean);
+}
+
+export function domainAllowed(email: string): boolean {
+  const allowed = allowedDomains();
+  if (!allowed.length) return true;
+  // Last "@" wins: an address may legitimately contain one in a quoted local
+  // part, and taking the first would compare against the wrong thing.
+  const at = email.lastIndexOf("@");
+  if (at < 0) return false;
+  const domain = email.slice(at + 1).trim().toLowerCase();
+  // Exact match only. Suffix matching would let `notkognozconsulting.com`
+  // through, which is precisely the trick this is meant to stop.
+  return allowed.includes(domain);
+}
 
 export interface GateUser {
   id: string;
@@ -34,6 +75,10 @@ export async function resolveSsoUser(
 ): Promise<GateResult> {
   const candidate = email.trim();
   if (!candidate) return { ok: false, code: "not_authorized" };
+
+  // Before the database is touched: an account from outside the tenant's
+  // domain is refused without costing a query.
+  if (!domainAllowed(candidate)) return { ok: false, code: "domain_not_allowed" };
 
   let rows: GateUser[];
   try {

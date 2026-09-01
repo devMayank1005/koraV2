@@ -5,7 +5,7 @@
  * user present, using the application permission `Mail.Send`. That has two
  * consequences worth stating plainly, because neither is obvious from the code:
  *
- *   Mail always comes from ONE fixed mailbox (`AZURE_MAIL_SENDER`), never from
+ *   Mail always comes from ONE fixed mailbox (`AZURE_DEFAULT_MAIL_SENDER`), never from
  *   the person who clicked the button. A client email sent by an editor arrives
  *   from that mailbox with that mailbox's reply-to.
  *
@@ -127,7 +127,7 @@ const asList = (v: string | string[] | undefined) =>
 export function isMailConfigured(): boolean {
   return (
     transportMode() === "console" ||
-    (azureCredentials() !== null && !!process.env.AZURE_MAIL_SENDER)
+    (azureCredentials() !== null && !!process.env.AZURE_DEFAULT_MAIL_SENDER)
   );
 }
 
@@ -161,7 +161,7 @@ export async function sendMail(
   message: MailMessage,
   deps: GraphDeps = {},
 ): Promise<void> {
-  const sender = process.env.AZURE_MAIL_SENDER;
+  const sender = process.env.AZURE_DEFAULT_MAIL_SENDER;
 
   if (transportMode() === "console") {
     console.log(
@@ -172,7 +172,7 @@ export async function sendMail(
     return;
   }
 
-  if (!sender) throw new Error("AZURE_MAIL_SENDER is required to send mail");
+  if (!sender) throw new Error("AZURE_DEFAULT_MAIL_SENDER is required to send mail");
 
   const doFetch = deps.fetchImpl ?? fetch;
   const sleep = deps.sleep ?? wait;
