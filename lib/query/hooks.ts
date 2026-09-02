@@ -5,6 +5,12 @@ import { api } from "@/lib/api/fetcher";
 import { keys } from "./keys";
 import type { ClientSummary, ClientTree } from "@/lib/db/queries/clients";
 import type { UserOption, UserAdminView } from "@/lib/db/queries/users";
+import type { SnapshotRow as DbSnapshotRow } from "@/lib/db/queries/misc";
+import type {
+  SnapshotRow as DomainSnapshotRow,
+  CapacityWeights,
+} from "@/lib/domain/dashboard";
+import { DEFAULT_CAPACITY_WEIGHTS } from "@/lib/domain/constants";
 
 /**
  * The read hooks every screen is built on.
@@ -109,6 +115,63 @@ export function useUsers(): UseQueryResult<(UserOption | UserAdminView)[]> {
 export function useUserNames(): Map<string, string> {
   const { data } = useUsers();
   return new Map((data ?? []).map((u) => [u.username, u.name]));
+}
+
+/* ------------------------------------------------ snapshots and settings */
+
+/**
+ * Portfolio snapshots, for the dashboard's trend arrows.
+ *
+ * MAPPED TO SNAKE_CASE ON THE WAY OUT, which looks wrong and is not. The
+ * domain's `healthRows` reads `client_id` / `snapshot_date` / `overall_rag`,
+ * because it is a verbatim port of the original, and the golden tests diff it
+ * against that original over generated fixtures. Renaming its fields to match
+ * this codebase's camelCase would mean editing the thing the golden test is
+ * supposed to hold still.
+ *
+ * So the boundary converts, here, once. This is exactly the shape mismatch
+ * that made `toV1Shape` return clients with no modules and no dates — snake
+ * against camel, every lookup `undefined`, every result structurally valid and
+ * empty. There it was silent because the reader took `any`. Here the two
+ * interfaces genuinely differ, so leaving it unmapped is a type error rather
+ * than a blank trend column.
+ */
+export function useSnapshots(): UseQueryResult<DomainSnapshotRow[]> {
+  return useQuery({
+    queryKey: keys.snapshots.list(),
+    queryFn: () =>
+      api<{ rows: DbSnapshotRow[] }>("/api/snapshots").then((r) =>
+        r.rows.map((s) => ({
+          client_id: s.clientId,
+          snapshot_date: s.snapshotDate,
+          overall_rag: s.overallRag,
+        })),
+      ),
+    // Snapshots are written once a night. Re-fetching them every 60s asks the
+    // database for yesterday's answer over and over.
+    staleTime: 10 * 60_000,
+    refetchInterval: false,
+  });
+}
+
+/**
+ * Capacity weights for the bandwidth tile.
+ *
+ * Falls back to the defaults rather than failing the tile: the setting is
+ * optional, and a team-load chart that disappears because nobody configured a
+ * weight is worse than one drawn with the documented defaults.
+ */
+export function useCapacityWeights(): CapacityWeights {
+  const { data } = useQuery({
+    queryKey: keys.settings.capacityWeights(),
+    queryFn: () =>
+      api<{ capacityWeights: Partial<CapacityWeights> }>(
+        "/api/settings/capacity-weights",
+      ).then((r) => r.capacityWeights),
+    staleTime: 10 * 60_000,
+    refetchInterval: false,
+  });
+  return { ...DEFAULT_CAPACITY_WEIGHTS, ...(data ?? {}) };
 }
 
 /* --------------------------------------------------------------- cache-only */

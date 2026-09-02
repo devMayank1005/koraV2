@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Menu, X, Eye, WifiOff } from "lucide-react";
 import { Sidebar, type SidebarUser } from "@/components/sidebar";
 import { RouteBreadcrumbs } from "@/components/breadcrumbs";
-import { useUi } from "@/lib/store/ui";
+import { useUi, useEffectiveRole } from "@/lib/store/ui";
 import { Providers } from "@/components/providers";
 
 /**
@@ -26,11 +26,12 @@ export function AppChrome({
   const viewAsRole = useUi((s) => s.viewAsRole);
   const setViewAsRole = useUi((s) => s.setViewAsRole);
 
-  // View-as is a preview for an admin and nothing more. It never reaches the
-  // server: the session still carries the real role and every route re-checks
-  // it, so this can only ever hide UI, never grant it.
+  // The role comes from the shared hook, not from a second copy of this rule —
+  // the dashboard needs the same answer to decide which of its two entirely
+  // different screens to render, and computing it twice is how the sidebar
+  // and the page come to disagree.
   const previewing = user.role === "admin" && viewAsRole;
-  const effectiveRole = previewing ? viewAsRole : user.role;
+  const effectiveRole = useEffectiveRole(user.role);
 
   const banners = (offline ? 1 : 0) + (previewing ? 1 : 0);
 

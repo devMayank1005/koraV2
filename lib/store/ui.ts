@@ -173,3 +173,22 @@ function legacyKind(view: string | undefined): RecentItem["kind"] {
   if (view?.startsWith("ams")) return "ams";
   return "client";
 }
+
+/**
+ * The role the UI should behave as.
+ *
+ * View-as is a preview for an admin and nothing more: it never reaches the
+ * server, the session still carries the real role, and every route re-checks
+ * it. So this can only ever hide UI, never grant it — which is why it is safe
+ * to compute in the browser.
+ *
+ * It lives here rather than inside the chrome because two places need the same
+ * answer: the sidebar, which hides the Admin link, and the dashboard, which
+ * swaps to an entirely different screen. Computing it twice is how those two
+ * come to disagree, leaving an admin previewing as an editor looking at the
+ * portfolio dashboard with the Admin link hidden.
+ */
+export function useEffectiveRole(realRole: string): string {
+  const viewAsRole = useUi((s) => s.viewAsRole);
+  return realRole === "admin" && viewAsRole ? viewAsRole : realRole;
+}
