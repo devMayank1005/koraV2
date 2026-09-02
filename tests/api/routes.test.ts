@@ -63,6 +63,7 @@ const { GET: getAudit } = await import("@/app/api/audit/route");
 const { GET: getSnapshots, POST: postSnapshot } = await import(
   "@/app/api/snapshots/route"
 );
+const { POST: runDigestCron } = await import("@/app/api/cron/daily-digest/route");
 const { GET: getClients, POST: postClient } = await import("@/app/api/clients/route");
 const { PATCH: patchClient, DELETE: deleteClient } = await import(
   "@/app/api/clients/[clientId]/route"
@@ -72,7 +73,7 @@ const { PATCH: patchIntegration } = await import(
 );
 
 const { signToken, buildPayload } = await import("@/lib/auth/token");
-const { clients, users } = await import("@/lib/db/schema");
+const { clients, users, portfolioSnapshots } = await import("@/lib/db/schema");
 
 const SECRET = "route-test-secret";
 
@@ -153,6 +154,49 @@ const ctx = <T extends Record<string, string>>(params: T) => ({
 });
 
 /* ============================================================ role gates */
+
+describe("the digest cron captures the daily snapshot", () => {
+  // NOTHING captured snapshots. The read hook existed, the POST route existed,
+  // and no caller did — so at cutover the dashboard's trend arrows would have
+  // gone stale and then empty, with nothing to connect it to the switchover.
+  // v1 captured one on every dashboard load; this rides on the digest because
+  // the Hobby plan allows two crons and both are already spoken for.
+  const CRON = "cron-test-secret";
+  const cronReq = (path: string) =>
+    new NextRequest(`http://localhost${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${CRON}` },
+    });
+
+  beforeEach(() => {
+    vi.stubEnv("CRON_SECRET", CRON);
+    // No mail credentials in the test process, so the digest plans and reports
+    // rather than sending. The snapshot must still be captured.
+    vi.stubEnv("KORA_MAIL_TRANSPORT", "console");
+  });
+
+  it("writes a snapshot row, even on a DRY RUN", async () => {
+    // A dry run withholds EMAIL. Skipping the capture too would make "check the
+    // routing safely" silently cost a day of trend data.
+    await db.insert(clients).values({ id: "c_snap", name: "Snapshot Co" });
+
+    const res = await runDigestCron(cronReq("/api/cron/daily-digest?dryRun=1"));
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { snapshot: { clients: number } | null };
+    expect(body.snapshot).not.toBeNull();
+    expect(body.snapshot!.clients).toBeGreaterThan(0);
+    expect((await db.select().from(portfolioSnapshots)).length).toBeGreaterThan(0);
+  });
+
+  it("is idempotent — a second run the same day does not duplicate", async () => {
+    await db.insert(clients).values({ id: "c_snap", name: "Snapshot Co" });
+    await runDigestCron(cronReq("/api/cron/daily-digest?dryRun=1"));
+    const first = (await db.select().from(portfolioSnapshots)).length;
+    await runDigestCron(cronReq("/api/cron/daily-digest?dryRun=1"));
+    expect((await db.select().from(portfolioSnapshots)).length).toBe(first);
+  });
+});
 
 describe("role gates, at the route", () => {
   it("refuses a viewer the digest recipient list", async () => {
