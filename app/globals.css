@@ -107,6 +107,9 @@
   --k-shadow-m: 0 8px 24px rgba(33, 33, 33, 0.08);
   --k-shadow-l: 0 16px 48px rgba(33, 33, 33, 0.12);
   --k-focus-ring: 0 0 0 3px var(--k-primary-12);
+  /* Select chevron. A data: URI cannot use currentColor, so the stroke is
+     the --k-mute value spelled out, and re-declared in the dark block. */
+  --k-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   /* --- Motion ------------------------------------------------------------ */
   --k-t-fast: 120ms cubic-bezier(0.2, 0.7, 0.3, 1);
@@ -191,6 +194,8 @@
        ink    13.5 :1   body
      The light theme puts 10px labels at 2.56:1, which is below AA; there is no
      reason to reproduce that here, so the dark ramp starts above it. */
+  --k-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239bb3c6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
   --k-mute-2: #7e9aaf;
   --k-mute: #9bb3c6;
   --k-ink-3: #bccedc;
@@ -535,6 +540,145 @@
     color: var(--k-ink);
   }
 
+  /* A `.k-field` that is also a button — the click target that swaps a
+     read-mode value for an input. Looks identical at rest so the page does not
+     become a grid of boxes, and announces itself on hover. */
+  .k-field-edit {
+    width: 100%;
+    text-align: left;
+    cursor: text;
+  }
+
+  .k-field-edit:hover {
+    border-color: var(--k-field);
+    background: var(--k-paper);
+  }
+
+  .k-field-edit:focus-visible {
+    outline: none;
+    border-color: var(--k-primary);
+    box-shadow: var(--k-focus-ring);
+  }
+
+  /* Multi-line input. Height is set by `rows`, so no fixed height here. */
+  .k-textarea {
+    width: 100%;
+    min-height: 72px;
+    padding: 8px 12px;
+    border: 1px solid var(--k-field);
+    border-radius: var(--k-radius);
+    background: var(--k-paper);
+    color: var(--k-ink);
+    font-family: inherit;
+    font-size: 12.5px;
+    line-height: 1.6;
+    resize: vertical;
+    transition:
+      border-color var(--k-t-fast),
+      box-shadow var(--k-t-fast);
+  }
+
+  .k-textarea::placeholder {
+    color: var(--k-mute);
+  }
+
+  .k-textarea:focus {
+    outline: none;
+    border-color: var(--k-primary);
+    box-shadow: var(--k-focus-ring);
+  }
+
+  /* Native select, restyled. `appearance: none` removes the platform chrome;
+     the chevron is a background SVG so it inherits nothing from the OS and
+     looks the same in both themes. `currentColor` cannot be used in a
+     data: URI, so the stroke is the token value spelled out. */
+  .k-select {
+    width: 100%;
+    height: 32px;
+    padding: 0 28px 0 10px;
+    border: 1px solid var(--k-field);
+    border-radius: var(--k-radius);
+    background-color: var(--k-paper);
+    background-image: var(--k-chevron);
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    background-size: 12px;
+    color: var(--k-ink);
+    font-family: inherit;
+    font-size: 12.5px;
+    appearance: none;
+    cursor: pointer;
+    transition:
+      border-color var(--k-t-fast),
+      box-shadow var(--k-t-fast);
+  }
+
+  .k-select:focus {
+    outline: none;
+    border-color: var(--k-primary);
+    box-shadow: var(--k-focus-ring);
+  }
+
+  .k-select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /* 15px square, radius 3 (handoff §6 — one of the sub-16px primitives the
+     4px/9999px rule exempts). Done = filled green with a white tick. */
+  .k-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    flex: none;
+    border: 1.5px solid var(--k-field);
+    border-radius: 3px;
+    background: var(--k-paper);
+    color: transparent;
+    cursor: pointer;
+    transition:
+      background var(--k-t-fast),
+      border-color var(--k-t-fast);
+  }
+
+  .k-check[data-checked="true"] {
+    background: var(--k-fill-ok);
+    border-color: var(--k-fill-ok);
+    color: #ffffff;
+  }
+
+  .k-check:focus-visible {
+    outline: none;
+    box-shadow: var(--k-focus-ring);
+  }
+
+  /* Invalid state, shared by every control above.
+     Colour is never the only signal — the field is described by a
+     `.k-error` message and wired with aria-describedby, because a red border
+     says nothing to a screen reader and little to anyone who cannot
+     distinguish it from the resting grey. */
+  .k-input[aria-invalid="true"],
+  .k-textarea[aria-invalid="true"],
+  .k-select[aria-invalid="true"] {
+    border-color: var(--k-fill-risk);
+  }
+
+  .k-input[aria-invalid="true"]:focus,
+  .k-textarea[aria-invalid="true"]:focus,
+  .k-select[aria-invalid="true"]:focus {
+    border-color: var(--k-fill-risk);
+    box-shadow: 0 0 0 3px var(--k-tint-risk);
+  }
+
+  .k-error {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--k-text-red);
+  }
+
   /* --- Pills ------------------------------------------------------------- */
   .k-status {
     display: inline-flex;
@@ -742,6 +886,29 @@
     border-left: 3px solid var(--k-fill-warn);
     border-radius: var(--k-radius);
     background: rgba(245, 158, 11, 0.06);
+  }
+
+  /* Toasts.
+     `providers.tsx` has passed this class to Sonner since the provider was
+     written, and it was never defined — so every toast has been rendering in
+     Sonner's own palette rather than the Kognoz tokens. Nothing had raised one
+     yet, which is why nobody saw it. Sonner sets its colours through its own
+     `--normal-*` custom properties, so they are overridden here rather than
+     fought with `!important` on the painted properties. */
+  .k-toast {
+    --normal-bg: var(--k-paper);
+    --normal-text: var(--k-ink);
+    --normal-border: var(--k-line);
+    --success-bg: var(--k-paper);
+    --success-text: var(--k-text-green);
+    --success-border: var(--k-line);
+    --error-bg: var(--k-paper);
+    --error-text: var(--k-text-red);
+    --error-border: var(--k-line);
+    border-radius: var(--k-radius);
+    box-shadow: var(--k-shadow-m);
+    font-family: inherit;
+    font-size: 12.5px;
   }
 
   /* --- Feedback ---------------------------------------------------------- */

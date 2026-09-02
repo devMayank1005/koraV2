@@ -9,6 +9,7 @@ import {
   Settings,
   Search,
   Paperclip,
+  Check,
 } from "lucide-react";
 import Image from "next/image";
 import { ThemeToggle, useTheme } from "@/components/theme";
@@ -291,6 +292,60 @@ export default function StyleguidePage() {
             <div>
               <label className="k-label">Read mode</label>
               <div className="k-field">Arjun Mehta</div>
+            </div>
+            <div>
+              <label className="k-label">Read mode, editable</label>
+              <button type="button" className="k-field k-field-edit">
+                Arjun Mehta
+              </button>
+              <span className="mt-1 block text-[11px] text-k-mute">
+                Identical at rest so a record card is not a grid of boxes; the
+                border and ground lift on hover.
+              </span>
+            </div>
+            <div>
+              <label className="k-label">Select</label>
+              <select className="k-select" defaultValue="In Progress">
+                {STATUSES.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="k-label">Checkbox</label>
+              <div className="flex items-center gap-2 pt-1">
+                <span className="k-check" data-checked="true" aria-hidden>
+                  <Check size={11} strokeWidth={2.5} />
+                </span>
+                <span className="text-[12.5px] text-k-ink">UAT sign-off</span>
+                <span className="k-check ml-4" data-checked="false" aria-hidden />
+                <span className="text-[12.5px] text-k-ink">Go-live plan</span>
+              </div>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="k-label">Textarea</label>
+              <textarea
+                className="k-textarea"
+                rows={3}
+                defaultValue={"Payroll cutover rehearsed with the client.\nSign-off document attached."}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="k-label">Invalid state</label>
+              <input
+                className="k-input"
+                aria-invalid="true"
+                aria-describedby="sg-err"
+                defaultValue=""
+              />
+              <span id="sg-err" className="k-error">
+                Name is required
+              </span>
+              <span className="mt-1 block text-[11px] text-k-mute">
+                Colour is never the only signal — the message is wired with
+                aria-describedby, because a red border says nothing to a screen
+                reader.
+              </span>
             </div>
           </div>
         </Section>
