@@ -113,6 +113,25 @@ function firstDiff(
   return null;
 }
 
+/**
+ * Deep-remove every `_v`, leaving the rest of the structure identical.
+ *
+ * Rebuilds rather than deleting in place: the tree belongs to the caller and
+ * this gate must not mutate the thing it is measuring.
+ */
+function stripTokens(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripTokens);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === "_v") continue;
+      out[k] = stripTokens(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 async function main() {
   const target = resolveTarget();
   announce("parity-compare — read path vs v1 source", target, "read-only");
@@ -169,7 +188,15 @@ async function main() {
 
       // `_v` is an API addition with no v1 counterpart. Removed rather than
       // ignored inside firstDiff, so an unexpected extra key still fails.
-      const { _v, ...served } = tree;
+      //
+      // STRIPPED AT EVERY DEPTH, not just the top. Children carry tokens too
+      // now — they have to, or nothing under a client can be edited — and this
+      // gate compares against the v1 jsonb, which has none. Leaving them in
+      // would make every integration, milestone, module, phase and work-log row
+      // read as a difference, turning the one check that proves the API still
+      // matches production permanently red for a known reason.
+      const { _v } = tree;
+      const served = stripTokens(tree) as Record<string, unknown>;
       if (!_v) {
         diffs.push({
           clientId: id, clientName: name, path: "_v",

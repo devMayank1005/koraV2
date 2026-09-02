@@ -56,6 +56,15 @@ export interface Milestone {
   dueDate?: string;
   owner?: string;
   notes?: string;
+  /**
+   * Optimistic-concurrency token = the row's `updated_at`.
+   *
+   * Optional because the v1 jsonb had no equivalent and the migration
+   * mappers reconstruct this shape without one. Every read through the API
+   * supplies it, and every PATCH/DELETE of this entity requires it back as
+   * If-Match.
+   */
+  _v?: string;
 }
 
 export interface Integration {
@@ -70,6 +79,15 @@ export interface Integration {
   createdAt?: string;
   timeline?: ActivityEntry[];
   milestones?: Milestone[];
+  /**
+   * Optimistic-concurrency token = the row's `updated_at`.
+   *
+   * Optional because the v1 jsonb had no equivalent and the migration
+   * mappers reconstruct this shape without one. Every read through the API
+   * supplies it, and every PATCH/DELETE of this entity requires it back as
+   * If-Match.
+   */
+  _v?: string;
 }
 
 export interface Phase {
@@ -82,12 +100,30 @@ export interface Phase {
   currentActivity?: string;
   nextAction?: string;
   updates?: ActivityEntry[];
+  /**
+   * Optimistic-concurrency token = the row's `updated_at`.
+   *
+   * Optional because the v1 jsonb had no equivalent and the migration
+   * mappers reconstruct this shape without one. Every read through the API
+   * supplies it, and every PATCH/DELETE of this entity requires it back as
+   * If-Match.
+   */
+  _v?: string;
 }
 
 export interface Module {
   id: string;
   name: string;
   phases?: Phase[];
+  /**
+   * Optimistic-concurrency token = the row's `updated_at`.
+   *
+   * Optional because the v1 jsonb had no equivalent and the migration
+   * mappers reconstruct this shape without one. Every read through the API
+   * supplies it, and every PATCH/DELETE of this entity requires it back as
+   * If-Match.
+   */
+  _v?: string;
 }
 
 export interface WorkLogEntry {
@@ -112,6 +148,15 @@ export interface WorkLogEntry {
   hours?: number;
   loggedAt?: string;
   edits?: { at: string; by: string; changed: string[] }[];
+  /**
+   * Optimistic-concurrency token = the row's `updated_at`.
+   *
+   * Optional because the v1 jsonb had no equivalent and the migration
+   * mappers reconstruct this shape without one. Every read through the API
+   * supplies it, and every PATCH/DELETE of this entity requires it back as
+   * If-Match.
+   */
+  _v?: string;
 }
 
 export interface Client {

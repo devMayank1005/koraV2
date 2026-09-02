@@ -143,12 +143,45 @@ export async function getClientTrees(
       .from(clients)
       .where(clientWhere)
       .orderBy(asc(clients.name)),
-    db.select().from(integrations).where(active(integrations)),
-    db.select().from(milestones).where(active(milestones)),
-    db.select().from(modules).where(active(modules)),
-    db.select().from(phases).where(active(phases)),
-    db.select().from(amsWorkLog).where(active(amsWorkLog)),
+    // Children carry their own `_v` too. Every child PATCH and DELETE runs
+    // requireIfMatch before it does anything else, so a tree without these
+    // tokens is a tree whose contents cannot be edited at all — the read path
+    // and the write path were each self-consistent and did not agree.
+    db
+      .select({ ...getTableColumns(integrations), _v: vToken(integrations.updatedAt) })
+      .from(integrations)
+      .where(active(integrations)),
+    db
+      .select({ ...getTableColumns(milestones), _v: vToken(milestones.updatedAt) })
+      .from(milestones)
+      .where(active(milestones)),
+    db
+      .select({ ...getTableColumns(modules), _v: vToken(modules.updatedAt) })
+      .from(modules)
+      .where(active(modules)),
+    db
+      .select({ ...getTableColumns(phases), _v: vToken(phases.updatedAt) })
+      .from(phases)
+      .where(active(phases)),
+    db
+      .select({ ...getTableColumns(amsWorkLog), _v: vToken(amsWorkLog.updatedAt) })
+      .from(amsWorkLog)
+      .where(active(amsWorkLog)),
   ]);
+
+  // id -> token, for re-attaching after shaping. `toV1Shape` builds its output
+  // from an explicit field whitelist, so anything not named there is dropped —
+  // and it must stay that way, because verify.ts compares its result against
+  // the v1 jsonb, which has no `_v` to compare to. So the token rides alongside
+  // rather than through.
+  const tokens = new Map<string, string>();
+  for (const rows of [iRows, msRows, mRows, pRows, wRows]) {
+    for (const r of rows as { id: string; _v: string }[]) tokens.set(r.id, r._v);
+  }
+  const withV = <T extends { id: string }>(node: T) => ({
+    ...node,
+    _v: tokens.get(node.id),
+  });
 
   // Bucket the children by client once, so assembly is linear rather than a
   // filter pass per client per table.
@@ -187,8 +220,29 @@ export async function getClientTrees(
 
     // `_v` is the row's updated_at and is what a later PATCH must echo back in
     // If-Match. It is deliberately not part of the v1 shape, so it is attached
-    // here rather than inside the shared shaping function.
-    return { ...shaped, _v: c._v };
+    // here rather than inside the shared shaping function — for the client and
+    // for every entity beneath it.
+    return {
+      ...shaped,
+      _v: c._v,
+      integrations: shaped.integrations?.map((i) => ({
+        ...withV(i),
+        milestones: i.milestones?.map(withV),
+      })),
+      // `modules` and `workLog` are sentinel keys: present only when the client
+      // is in that domain. Mapping a missing one would create it as `[]` and
+      // quietly move the client into a domain it is not in — the exact
+      // distinction migration 0003 exists to preserve.
+      ...(shaped.modules
+        ? {
+            modules: shaped.modules.map((m) => ({
+              ...withV(m),
+              phases: m.phases?.map(withV),
+            })),
+          }
+        : {}),
+      ...(shaped.workLog ? { workLog: shaped.workLog.map(withV) } : {}),
+    };
   });
 }
 

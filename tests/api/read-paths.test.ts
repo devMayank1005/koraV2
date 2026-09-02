@@ -8,6 +8,7 @@ import {
   users,
   clients,
   integrations,
+  milestones,
   modules,
   phases,
   amsWorkLog,
@@ -86,6 +87,10 @@ beforeAll(async () => {
       ] as never },
     { id: "i_arch", clientId: "c_full", name: "Old", archived: true },
   ]);
+  await db.insert(milestones).values({
+    id: "ms1", integrationId: "i1", clientId: "c_full",
+    name: "UAT sign-off", status: "Pending", dueDate: "2026-09-04",
+  });
   await db.insert(modules).values({ id: "m1", clientId: "c_full", name: "Core HR" });
   await db.insert(phases).values({
     id: "p1", moduleId: "m1", clientId: "c_full", phaseName: "BPU",
@@ -190,6 +195,51 @@ describe("client tree", () => {
     const trees = await getClientTrees(db);
     expect(trees.map((t) => t.id)).toEqual(["c_full", "c_empty"]);
     expect(trees[0]._v).toBeTruthy();
+  });
+
+  /**
+   * EVERY entity in the tree must carry an OCC token, not just the client.
+   *
+   * The read path and the write path each looked self-consistent and did not
+   * agree. `getClientTrees` selected `_v` for clients only, while every child
+   * PATCH and DELETE runs `requireIfMatch` before anything else — so editing
+   * an integration, milestone, module, phase or work-log row was impossible:
+   * the token it demands was never served. Nothing caught it because no test
+   * had ever read the tree and written back from it.
+   */
+  it("gives EVERY entity an OCC token, at every depth", async () => {
+    const [tree] = await getClientTrees(db, ["c_full"]);
+
+    // A canonical token: UTC, microsecond precision. Anything else fails
+    // If-Match even when present, so shape is asserted, not just truthiness.
+    const TOKEN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+    const missing: string[] = [];
+
+    const check = (label: string, node: { _v?: unknown } | undefined) => {
+      if (!node) return;
+      if (typeof node._v !== "string" || !TOKEN.test(node._v)) {
+        missing.push(`${label}: ${JSON.stringify(node._v)}`);
+      }
+    };
+
+    check("client", tree);
+    for (const i of tree.integrations ?? []) {
+      check(`integration ${i.id}`, i);
+      for (const m of i.milestones ?? []) check(`milestone ${m.id}`, m);
+    }
+    for (const m of tree.modules ?? []) {
+      check(`module ${m.id}`, m);
+      for (const p of m.phases ?? []) check(`phase ${p.id}`, p);
+    }
+    for (const w of tree.workLog ?? []) check(`work log ${w.id}`, w);
+
+    expect(missing).toEqual([]);
+
+    // And the walk must actually have visited children — otherwise this
+    // passes vacuously the day the seed stops producing them.
+    expect(tree.integrations?.[0]?.milestones?.length).toBeGreaterThan(0);
+    expect(tree.modules?.[0]?.phases?.length).toBeGreaterThan(0);
+    expect(tree.workLog?.length).toBeGreaterThan(0);
   });
 });
 
