@@ -19,6 +19,15 @@ export type Role = "viewer" | "editor" | "admin";
 const RANK: Record<Role, number> = { viewer: 1, editor: 2, admin: 3 };
 
 export interface Ctx<P = Record<string, string>> {
+  /**
+   * The database handle, resolved on FIRST ACCESS rather than eagerly.
+   *
+   * `withPublic` used to build one for every route, which coupled routes that
+   * never touch the database to its availability: a misconfigured
+   * DATABASE_URL made `/api/auth/microsoft/start` — a pure redirect that
+   * issues no query — return an opaque 500 alongside everything else. A route
+   * should fail on the dependencies it actually uses.
+   */
   db: Db;
   user: SessionUser;
   ip: string | null;
@@ -94,7 +103,11 @@ export function withPublic<P = Record<string, string>>(
     const context = `${req.method} ${new URL(req.url).pathname}`;
     try {
       return await handler({
-        db: getDb(),
+        // Lazy: a public route that issues no query must not fail because the
+        // database is unreachable. See the note on Ctx.db.
+        get db() {
+          return getDb();
+        },
         user: null,
         ip: clientIp(req.headers),
         userAgent: userAgent(req.headers),

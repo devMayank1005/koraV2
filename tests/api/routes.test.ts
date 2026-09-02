@@ -40,8 +40,10 @@ let sessionToken: string | null = null;
 // The route handlers reach for the app's singleton and for request-scoped
 // cookies; neither exists in a test process, so both are replaced. Everything
 // else — withAuth, the role ranking, requireIfMatch, the mutations — is real.
+// vi.fn rather than a plain arrow, so a test can make the handle throw and
+// assert that routes which never query still work.
 vi.mock("@/lib/db/client", () => ({
-  getDb: () => db,
+  getDb: vi.fn(() => db),
 }));
 
 vi.mock("next/headers", () => ({
@@ -97,6 +99,13 @@ beforeEach(async () => {
      portfolio_snapshots restart identity cascade`,
   );
   vi.stubEnv("INTEGTRACK_SECRET", SECRET);
+
+  // Undo any mockImplementationOnce a previous test installed.
+  // Cast at the seam: the tests run PGlite, getDb is typed for postgres-js.
+  // Same substitution the whole suite already relies on, now made explicit
+  // because vi.mocked gives the factory a real type.
+  const { getDb } = await import("@/lib/db/client");
+  vi.mocked(getDb).mockImplementation(() => db as unknown as ReturnType<typeof getDb>);
 
   await db.insert(users).values([
     { id: "u_admin", username: "meera", name: "Meera", email: "m@x.com",
@@ -431,5 +440,38 @@ describe("authenticated pages are never prerendered", () => {
     expect(cookieAt).toBeGreaterThan(-1);
     expect(dbAt).toBeGreaterThan(-1);
     expect(cookieAt).toBeLessThan(dbAt);
+  });
+});
+
+describe("a route fails on the dependencies it actually uses", () => {
+  /**
+   * `withPublic` built a database handle for every route eagerly. With a
+   * misconfigured DATABASE_URL that made `/api/auth/microsoft/start` — a pure
+   * redirect that issues no query — return an opaque 500 alongside everything
+   * else, which is a confusing signal when you are trying to work out what is
+   * actually broken.
+   */
+  it("SSO start works even when the database is unreachable", async () => {
+    vi.stubEnv("AZURE_CLIENT_ID", "id");
+    vi.stubEnv("AZURE_CLIENT_SECRET", "secret");
+    vi.stubEnv("AZURE_TENANT_ID", "tenant");
+    vi.stubEnv("KORA_APP_URL", "https://kora.test");
+
+    // Any access to the handle throws, standing in for an unreachable server.
+    const { getDb } = await import("@/lib/db/client");
+    vi.mocked(getDb).mockImplementationOnce(() => {
+      throw new Error("database unreachable");
+    });
+
+    const { GET: ssoStart } = await import("@/app/api/auth/microsoft/start/route");
+    const res = await ssoStart(
+      new NextRequest("https://kora.test/api/auth/microsoft/start", {
+        headers: { host: "kora.test" },
+      }),
+    );
+
+    // A redirect to Microsoft, not a 500.
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("login.microsoftonline.com");
   });
 });
