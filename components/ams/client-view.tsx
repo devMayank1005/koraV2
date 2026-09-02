@@ -432,10 +432,16 @@ function WorkLogTable({
 }) {
   return (
     <div className="overflow-x-auto">
-      {/* Wider than the read-only version was: a select needs room for its
-          longest option plus the chevron, and "Enhancement" / "L4 - Critical"
-          truncated to "Enhan" / "L4 - Cr" at the old 760px. */}
-      <table className="w-full min-w-[980px] border-collapse text-[12.5px]">
+      {/* The editable table needs more room than the read-only one: a select
+          must fit its longest option plus the chevron, and "Enhancement" /
+          "L4 - Critical" truncated to "Enhan" / "L4 - Cr" at 760px. A viewer
+          sees pills instead, so widening for them would only clip the table
+          and force a scrollbar nobody needs. */}
+      <table
+        className={`w-full border-collapse text-[12.5px] ${
+          canEdit ? "min-w-[980px]" : "min-w-[760px]"
+        }`}
+      >
         <thead>
           <tr className="k-thead">
             <th className="px-3 py-2 text-left font-semibold">Date</th>
