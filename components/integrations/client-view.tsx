@@ -253,6 +253,7 @@ function IntegrationTable({
                       options={assignees}
                       emptyLabel="Unassigned"
                       unknownSuffix="(not a current user)"
+                      nullable
                       version={i._v}
                       before={i}
                     />

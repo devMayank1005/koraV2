@@ -5,8 +5,15 @@ import { ChevronLeft, Lock, Check } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill } from "@/components/ui/status";
+import { InlineSelect, InlineText } from "@/components/ui/inline";
+import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { ActivityFeed } from "@/components/activity-feed";
-import { PHASES, STATUS_COLORS, SIGNOFF_PHASES } from "@/lib/domain/constants";
+import {
+  PHASES,
+  STATUSES,
+  STATUS_COLORS,
+  SIGNOFF_PHASES,
+} from "@/lib/domain/constants";
 import { canCompletePhase } from "@/lib/domain/implementation";
 import { fmtDate } from "@/lib/utils/dates";
 import type { Phase, Status } from "@/lib/domain/types";
@@ -34,6 +41,17 @@ export function PhaseDetailView({
   const client = query.data;
   const mod = client?.modules?.find((m) => m.id === moduleId);
   const phase = mod?.phases?.find((p) => p.name === phaseName);
+  const canEdit = useCanEdit();
+  const assignees = useAssigneeOptions(phase?.assignee);
+  const target = phase
+    ? {
+        kind: "phase" as const,
+        clientId,
+        id: phase.id,
+        path: `/api/phases/${encodeURIComponent(phase.id)}`,
+        screen: "implementation",
+      }
+    : undefined;
 
   return (
     <div className="p-7">
@@ -60,7 +78,25 @@ export function PhaseDetailView({
 
             <header className="flex flex-wrap items-start justify-between gap-3">
               <h1 className="k-page-title min-w-0">{phaseName}</h1>
-              {phase && <StatusPill status={phase.status} />}
+              {phase &&
+                (canEdit && target ? (
+                  <div className="w-[200px]">
+                    <InlineSelect
+                      target={target}
+                      field="status"
+                      label={`Status for ${phaseName}`}
+                      value={phase.status}
+                      options={STATUSES}
+                      version={phase._v}
+                      before={phase}
+                      optionDisabled={(o) =>
+                        o === "Completed" && !canCompletePhase(phase).ok
+                      }
+                    />
+                  </div>
+                ) : (
+                  <StatusPill status={phase.status} />
+                ))}
             </header>
 
             <PhaseTrack
@@ -99,11 +135,91 @@ export function PhaseDetailView({
                   <section className="k-card p-4">
                     <h2 className="k-card-title">Detail</h2>
                     <dl className="mt-3 space-y-2.5">
-                      <F label="Assignee" v={phase.assignee} />
-                      <F label="Start" v={phase.startDate && fmtDate(phase.startDate)} />
-                      <F label="Target" v={phase.targetDate && fmtDate(phase.targetDate)} />
-                      <F label="Current activity" v={phase.currentActivity} />
-                      <F label="Next action" v={phase.nextAction} />
+                      <F label="Assignee">
+                        {canEdit && target ? (
+                          <InlineSelect
+                            target={target}
+                            field="assignee"
+                            label="Assignee"
+                            value={phase.assignee ?? ""}
+                            options={assignees}
+                            version={phase._v}
+                            before={phase}
+                            emptyLabel="Unassigned"
+                            unknownSuffix="(not a current user)"
+                          />
+                        ) : (
+                          phase.assignee || <Dash />
+                        )}
+                      </F>
+                      <F label="Start">
+                        {canEdit && target ? (
+                          <InlineText
+                            target={target}
+                            field="startDate"
+                            kind="date"
+                            label="Start date"
+                            value={phase.startDate ?? ""}
+                            version={phase._v}
+                            before={phase}
+                            nullable
+                            format={fmtDate}
+                          />
+                        ) : phase.startDate ? (
+                          fmtDate(phase.startDate)
+                        ) : (
+                          <Dash />
+                        )}
+                      </F>
+                      <F label="Target">
+                        {canEdit && target ? (
+                          <InlineText
+                            target={target}
+                            field="targetDate"
+                            kind="date"
+                            label="Target date"
+                            value={phase.targetDate ?? ""}
+                            version={phase._v}
+                            before={phase}
+                            nullable
+                            format={fmtDate}
+                          />
+                        ) : phase.targetDate ? (
+                          fmtDate(phase.targetDate)
+                        ) : (
+                          <Dash />
+                        )}
+                      </F>
+                      <F label="Current activity">
+                        {canEdit && target ? (
+                          <InlineText
+                            target={target}
+                            field="currentActivity"
+                            kind="textarea"
+                            label="Current activity"
+                            value={phase.currentActivity ?? ""}
+                            version={phase._v}
+                            before={phase}
+                          />
+                        ) : (
+                          phase.currentActivity || <Dash />
+                        )}
+                      </F>
+                      <F label="Next action">
+                        {canEdit && target ? (
+                          <InlineText
+                            target={target}
+                            field="nextAction"
+                            kind="textarea"
+                            label="Next action"
+                            value={phase.nextAction ?? ""}
+                            version={phase._v}
+                            before={phase}
+                          />
+                        ) : (
+                          phase.nextAction || <Dash />
+                        )}
+                      </F>
                     </dl>
                   </section>
                 </aside>
@@ -222,13 +338,17 @@ function SignoffNotice({ phase }: { phase: Phase }) {
   );
 }
 
-function F({ label, v }: { label: string; v?: string | false }) {
+function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <dt className="k-eyebrow">{label}</dt>
       <dd className="mt-0.5 whitespace-pre-wrap text-[12px] text-k-ink-3">
-        {v || <span className="text-k-mute">—</span>}
+        {children}
       </dd>
     </div>
   );
+}
+
+function Dash() {
+  return <span className="text-k-mute">—</span>;
 }

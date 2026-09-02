@@ -210,3 +210,124 @@ describe("InlineSelect", () => {
     expect(screen.getByRole("option", { name: "Unassigned" })).toBeInTheDocument();
   });
 });
+
+describe("InlineSelect — nullish enums", () => {
+  it("sends null, not an empty string, when cleared", async () => {
+    // `z.enum([...]).nullish()` accepts null and REJECTS "". Without this,
+    // clearing a severity or a type is a 400 the user cannot act on.
+    wrap(
+      <InlineSelect
+        target={TARGET}
+        field="queryLevel"
+        label="Severity"
+        value="L4 - Critical"
+        options={["", "L3 - High", "L4 - Critical"]}
+        version={integ._v}
+        before={{ ...integ, queryLevel: "L4 - Critical" }}
+        nullable
+      />,
+    );
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "" } });
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body))).toEqual({
+      queryLevel: null,
+    });
+  });
+
+  it("disables a gated option but never the current value", () => {
+    // The signoff gate. Disabling the CURRENT value would make an
+    // already-Completed phase uneditable in both directions.
+    wrap(
+      <InlineSelect
+        target={TARGET}
+        field="status"
+        label="Status"
+        value="Completed"
+        options={["In Progress", "Completed"]}
+        version={integ._v}
+        before={integ}
+        optionDisabled={(o) => o === "Completed"}
+      />,
+    );
+    expect(screen.getByRole("option", { name: "Completed" })).not.toBeDisabled();
+    expect(screen.getByRole("option", { name: "In Progress" })).not.toBeDisabled();
+  });
+});
+
+describe("InlineText — typed editors", () => {
+  it("sends hours as a NUMBER, not a string", async () => {
+    // `hours` is z.number(); a string is a 400.
+    wrap(
+      <InlineText
+        target={TARGET}
+        field="hours"
+        kind="number"
+        label="Hours"
+        value="6.5"
+        version={integ._v}
+        before={{ ...integ, hours: 6.5 }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Hours/ }));
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "8" } });
+    fireEvent.keyDown(screen.getByRole("spinbutton"), { key: "Enter" });
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    expect(body).toEqual({ hours: 8 });
+    expect(typeof body.hours).toBe("number");
+  });
+
+  it("refuses a non-numeric value rather than sending a 400", async () => {
+    wrap(
+      <InlineText
+        target={TARGET}
+        field="hours"
+        kind="number"
+        label="Hours"
+        value="6.5"
+        version={integ._v}
+        before={{ ...integ, hours: 6.5 }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Hours/ }));
+    // `type=number` blocks most of this in a real browser; jsdom does not, so
+    // the guard has to exist in the component too.
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "abc" } });
+    fireEvent.keyDown(screen.getByRole("spinbutton"), { key: "Enter" });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not steal Enter in a textarea — that is a newline", async () => {
+    // currentActivity/nextAction hold multi-line notes. Committing on Enter
+    // would make a second line impossible to type.
+    wrap(
+      <InlineText
+        target={TARGET}
+        field="currentActivity"
+        kind="textarea"
+        label="Current activity"
+        value="line one"
+        version={integ._v}
+        before={{ ...integ, currentActivity: "line one" }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Current activity/ }));
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "line one\nline two" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fetch).not.toHaveBeenCalled();
+
+    // Cmd+Enter is the deliberate save shortcut there.
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body))).toEqual({
+      currentActivity: "line one\nline two",
+    });
+  });
+});

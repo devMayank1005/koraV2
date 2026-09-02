@@ -6,8 +6,15 @@ import { X } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
+import { InlineSelect, InlineText } from "@/components/ui/inline";
+import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { ActivityFeed } from "@/components/activity-feed";
-import { PHASES, STATUS_COLORS, SIGNOFF_PHASES } from "@/lib/domain/constants";
+import {
+  PHASES,
+  STATUSES,
+  STATUS_COLORS,
+  SIGNOFF_PHASES,
+} from "@/lib/domain/constants";
 import { implProgress, implAutoRag, canCompletePhase } from "@/lib/domain/implementation";
 import { fmtDate } from "@/lib/utils/dates";
 import type { Module, Phase, Status } from "@/lib/domain/types";
@@ -264,6 +271,17 @@ function SidePanel({
   // enforcement — one definition, so the panel can never promise something the
   // API would refuse.
   const gate = phase ? canCompletePhase(phase) : null;
+  const canEdit = useCanEdit();
+  const assignees = useAssigneeOptions(phase?.assignee);
+  const phaseTarget = phase
+    ? ({
+        kind: "phase" as const,
+        clientId,
+        id: phase.id,
+        path: `/api/phases/${encodeURIComponent(phase.id)}`,
+        screen: "implementation",
+      })
+    : undefined;
 
   return (
     <aside
@@ -295,25 +313,114 @@ function SidePanel({
       ) : (
         <>
           <div className="mt-3">
-            <StatusPill status={phase.status} />
+            {canEdit ? (
+              <InlineSelect
+                target={phaseTarget!}
+                field="status"
+                label={`Status for ${phaseName}`}
+                value={phase.status}
+                options={STATUSES}
+                version={phase._v}
+                before={phase}
+                // THE SIGNOFF GATE, shown before it is hit rather than after.
+                // v1 offered Completed freely and answered with a red toast
+                // that vanished in 3.5 seconds — after it had already written
+                // the form's other values into local state and not reverted
+                // them, so the user's typed dates were silently stranded.
+                optionDisabled={(o) => o === "Completed" && !!gate && !gate.ok}
+                hint={gate && !gate.ok ? gate.reason : undefined}
+              />
+            ) : (
+              <StatusPill status={phase.status} />
+            )}
           </div>
 
-          {gate && !gate.ok && (
-            <p className="k-callout mt-3 text-[11.5px]">{gate.reason}</p>
-          )}
-
           <dl className="mt-4 space-y-2.5">
-            <PanelField label="Assignee" value={phase.assignee} />
-            <PanelField
-              label="Start"
-              value={phase.startDate ? fmtDate(phase.startDate) : undefined}
-            />
-            <PanelField
-              label="Target"
-              value={phase.targetDate ? fmtDate(phase.targetDate) : undefined}
-            />
-            <PanelField label="Current activity" value={phase.currentActivity} />
-            <PanelField label="Next action" value={phase.nextAction} />
+            <PanelField label="Assignee">
+              {canEdit ? (
+                <InlineSelect
+                  target={phaseTarget!}
+                  field="assignee"
+                  label="Assignee"
+                  value={phase.assignee ?? ""}
+                  options={assignees}
+                  version={phase._v}
+                  before={phase}
+                  emptyLabel="Unassigned"
+                  unknownSuffix="(not a current user)"
+                />
+              ) : (
+                phase.assignee || <span className="text-k-mute">—</span>
+              )}
+            </PanelField>
+            <PanelField label="Start">
+              {canEdit ? (
+                <InlineText
+                  target={phaseTarget!}
+                  field="startDate"
+                  kind="date"
+                  label="Start date"
+                  value={phase.startDate ?? ""}
+                  version={phase._v}
+                  before={phase}
+                  nullable
+                  format={fmtDate}
+                />
+              ) : phase.startDate ? (
+                fmtDate(phase.startDate)
+              ) : (
+                <span className="text-k-mute">—</span>
+              )}
+            </PanelField>
+            <PanelField label="Target">
+              {canEdit ? (
+                <InlineText
+                  target={phaseTarget!}
+                  field="targetDate"
+                  kind="date"
+                  label="Target date"
+                  value={phase.targetDate ?? ""}
+                  version={phase._v}
+                  before={phase}
+                  nullable
+                  format={fmtDate}
+                />
+              ) : phase.targetDate ? (
+                fmtDate(phase.targetDate)
+              ) : (
+                <span className="text-k-mute">—</span>
+              )}
+            </PanelField>
+            <PanelField label="Current activity">
+              {canEdit ? (
+                <InlineText
+                  target={phaseTarget!}
+                  field="currentActivity"
+                  kind="textarea"
+                  label="Current activity"
+                  value={phase.currentActivity ?? ""}
+                  version={phase._v}
+                  before={phase}
+                />
+              ) : (
+                phase.currentActivity || <span className="text-k-mute">—</span>
+              )}
+            </PanelField>
+            <PanelField label="Next action">
+              {canEdit ? (
+                <InlineText
+                  target={phaseTarget!}
+                  field="nextAction"
+                  kind="textarea"
+                  label="Next action"
+                  value={phase.nextAction ?? ""}
+                  version={phase._v}
+                  before={phase}
+                />
+              ) : (
+                phase.nextAction || <span className="text-k-mute">—</span>
+              )}
+            </PanelField>
           </dl>
 
           <div className="mt-5">
@@ -338,12 +445,18 @@ function SidePanel({
   );
 }
 
-function PanelField({ label, value }: { label: string; value?: string }) {
+function PanelField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <dt className="k-eyebrow">{label}</dt>
       <dd className="mt-0.5 whitespace-pre-wrap text-[12px] text-k-ink-3">
-        {value || <span className="text-k-mute">—</span>}
+        {children}
       </dd>
     </div>
   );

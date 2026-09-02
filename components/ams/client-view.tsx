@@ -4,8 +4,15 @@ import { useMemo, useState } from "react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { RagPill, QueryLevelPill } from "@/components/ui/status";
+import { InlineSelect, InlineText } from "@/components/ui/inline";
+import { useCanEdit } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
-import { AMS_QUERY_LEVELS, STATUS_COLORS } from "@/lib/domain/constants";
+import {
+  AMS_QUERY_LEVELS,
+  AMS_TYPES,
+  AMS_ENTRY_STATUSES,
+  STATUS_COLORS,
+} from "@/lib/domain/constants";
 import {
   amsTotals,
   amsClientRag,
@@ -39,6 +46,7 @@ export function AmsClientView({ clientId }: { clientId: string }) {
   // which quietly hid every entry the moment the month turned over.
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const canEdit = useCanEdit();
 
   const totals = useMemo(
     () => (client ? amsTotals(client, from, to) : null),
@@ -123,7 +131,11 @@ export function AmsClientView({ clientId }: { clientId: string }) {
                     }
                   />
                 ) : (
-                  <WorkLogTable entries={totals.log} />
+                  <WorkLogTable
+                    entries={totals.log}
+                    clientId={clientId}
+                    canEdit={canEdit}
+                  />
                 )}
               </section>
             </div>
@@ -408,18 +420,29 @@ function MixRow({
   );
 }
 
-function WorkLogTable({ entries }: { entries: WorkLogEntry[] }) {
+function WorkLogTable({
+  entries,
+  clientId,
+  canEdit,
+}: {
+  entries: WorkLogEntry[];
+  clientId: string;
+  canEdit: boolean;
+}) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] border-collapse text-[12.5px]">
+      {/* Wider than the read-only version was: a select needs room for its
+          longest option plus the chevron, and "Enhancement" / "L4 - Critical"
+          truncated to "Enhan" / "L4 - Cr" at the old 760px. */}
+      <table className="w-full min-w-[980px] border-collapse text-[12.5px]">
         <thead>
           <tr className="k-thead">
             <th className="px-3 py-2 text-left font-semibold">Date</th>
             <th className="px-3 py-2 text-left font-semibold">Description</th>
-            <th className="px-3 py-2 text-left font-semibold">Type</th>
-            <th className="px-3 py-2 text-left font-semibold">Severity</th>
-            <th className="px-3 py-2 text-left font-semibold">Status</th>
-            <th className="px-3 py-2 text-right font-semibold">Hours</th>
+            <th className="w-[150px] px-3 py-2 text-left font-semibold">Type</th>
+            <th className="w-[150px] px-3 py-2 text-left font-semibold">Severity</th>
+            <th className="w-[130px] px-3 py-2 text-left font-semibold">Status</th>
+            <th className="w-[100px] px-3 py-2 text-right font-semibold">Hours</th>
           </tr>
         </thead>
         <tbody>
@@ -442,32 +465,87 @@ function WorkLogTable({ entries }: { entries: WorkLogEntry[] }) {
                     </p>
                   )}
                 </td>
-                <td className="px-3 py-2.5 text-k-ink-3">{entryType(e)}</td>
-                <td className="px-3 py-2.5">
-                  <QueryLevelPill level={e.queryLevel ?? null} />
+                <td className="px-3 py-2.5 text-k-ink-3">
+                  {canEdit ? (
+                    <InlineSelect
+                      target={targetFor(clientId, e.id)}
+                      // The WIRE name is `type`; the column is `entry_type`.
+                      // Sending `entryType` is a 400 from a `.strict()` schema.
+                      field="type"
+                      label="Type"
+                      value={entryType(e)}
+                      options={AMS_TYPES}
+                      version={e._v}
+                      before={e}
+                      nullable
+                    />
+                  ) : (
+                    entryType(e)
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
-                  <span
-                    className="k-status"
-                    style={{
-                      background:
-                        status === "Closed"
-                          ? "var(--k-tint-green)"
-                          : "var(--k-tint-cyan)",
-                      color:
-                        status === "Closed"
-                          ? "var(--k-text-green)"
-                          : "var(--k-text-cyan)",
-                      fontSize: 10,
-                    }}
-                  >
-                    {status}
-                  </span>
+                  {canEdit ? (
+                    <InlineSelect
+                      target={targetFor(clientId, e.id)}
+                      field="queryLevel"
+                      label="Severity"
+                      value={e.queryLevel ?? ""}
+                      options={AMS_QUERY_LEVELS}
+                      version={e._v}
+                      before={e}
+                      emptyLabel="—"
+                      nullable
+                    />
+                  ) : (
+                    <QueryLevelPill level={e.queryLevel ?? null} />
+                  )}
+                </td>
+                <td className="px-3 py-2.5">
+                  {canEdit ? (
+                    <InlineSelect
+                      target={targetFor(clientId, e.id)}
+                      field="entryStatus"
+                      label="Status"
+                      value={status}
+                      options={AMS_ENTRY_STATUSES}
+                      version={e._v}
+                      before={e}
+                    />
+                  ) : (
+                    <span
+                      className="k-status"
+                      style={{
+                        background:
+                          status === "Closed"
+                            ? "var(--k-tint-green)"
+                            : "var(--k-tint-cyan)",
+                        color:
+                          status === "Closed"
+                            ? "var(--k-text-green)"
+                            : "var(--k-text-cyan)",
+                        fontSize: 10,
+                      }}
+                    >
+                      {status}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <span className="k-mono text-[11.5px] text-k-ink">
-                    {round(Number(e.hours || 0))}
-                  </span>
+                  {canEdit ? (
+                    <InlineText
+                      target={targetFor(clientId, e.id)}
+                      field="hours"
+                      kind="number"
+                      label="Hours"
+                      value={String(e.hours ?? "")}
+                      version={e._v}
+                      before={e}
+                    />
+                  ) : (
+                    <span className="k-mono text-[11.5px] text-k-ink">
+                      {round(Number(e.hours || 0))}
+                    </span>
+                  )}
                 </td>
               </tr>
             );
@@ -497,6 +575,17 @@ function Row({
       </dd>
     </div>
   );
+}
+
+/** Where a work-log PATCH goes. */
+function targetFor(clientId: string, id: string) {
+  return {
+    kind: "workLog" as const,
+    clientId,
+    id,
+    path: `/api/work-log/${encodeURIComponent(id)}`,
+    screen: "ams",
+  };
 }
 
 /** Severity fill, reusing the status hues (handoff §9). */

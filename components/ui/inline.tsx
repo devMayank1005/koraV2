@@ -67,6 +67,9 @@ export function InlineSelect<T extends object>({
   disabled,
   emptyLabel = "—",
   unknownSuffix = "(unrecognised)",
+  optionDisabled,
+  nullable,
+  hint,
 }: {
   target: Target;
   field: keyof T & string;
@@ -83,6 +86,28 @@ export function InlineSelect<T extends object>({
    * current user)" is right for an assignee and nonsense on a status.
    */
   unknownSuffix?: string;
+  /**
+   * Disables individual options. The signoff gate needs this: BPU/CRP/UAT
+   * Signoff cannot be Completed without a document attached, but every other
+   * status stays available.
+   *
+   * Filtering the options array instead would collide with the unknown-value
+   * logic below — a phase already Completed would have its own status
+   * re-inserted and labelled as unrecognised.
+   */
+  optionDisabled?: (option: string) => boolean;
+  /**
+   * Send `null` rather than `""` when the empty option is chosen.
+   *
+   * Required for every nullish ENUM — `type`, `queryLevel`, `modeOfSupport`,
+   * `ragStatus`. `z.enum([...]).nullish()` accepts null and rejects `""`, so
+   * without this "clear it" is a 400. Free-text columns like `assignee` are
+   * `text().nullish()` and accept `""`, but writing null there too keeps one
+   * representation of empty in the column instead of two.
+   */
+  nullable?: boolean;
+  /** Explains a disabled option, next to the control. */
+  hint?: React.ReactNode;
 }) {
   const onFailure = useSaveFeedback();
   const update = useUpdateEntity(target.kind, target.clientId, target.id, {
@@ -99,7 +124,7 @@ export function InlineSelect<T extends object>({
   const known = options.includes(value);
   const choices = known ? options : [value, ...options];
 
-  return (
+  const select = (
     <select
       className="k-select"
       aria-label={label}
@@ -109,20 +134,36 @@ export function InlineSelect<T extends object>({
       // anyway would 428; disabling says so quietly instead.
       title={version ? undefined : "Reload to edit this"}
       onChange={(e) => {
-        const patch = buildPatch(before, { [field]: e.target.value } as never, [
-          field,
-        ]);
+        const raw = e.target.value;
+        const next = nullable && raw === "" ? null : raw;
+        const patch = buildPatch(before, { [field]: next } as never, [field]);
         if (!Object.keys(patch).length || !version) return;
         update.mutate({ version, patch });
       }}
     >
       {choices.map((o) => (
-        <option key={o} value={o}>
+        <option
+          key={o}
+          value={o}
+          // Never disable the CURRENT value: a select whose selected option is
+          // disabled still displays it, but the row would become uneditable in
+          // both directions once it got there.
+          disabled={o !== value && optionDisabled?.(o)}
+        >
           {o === "" ? emptyLabel : o}
           {o === value && !known ? ` ${unknownSuffix}` : ""}
         </option>
       ))}
     </select>
+  );
+
+  return hint ? (
+    <div className="min-w-0">
+      {select}
+      <span className="mt-1 block text-[11px] text-k-text-amber">{hint}</span>
+    </div>
+  ) : (
+    select
   );
 }
 
@@ -143,6 +184,18 @@ export function InlineText<T extends object>({
   placeholder = "—",
   /** Sends `null` rather than `""` when cleared, so the column goes null. */
   nullable,
+  /**
+   * What the control is. The API's schemas are strict about type, and sending
+   * the wrong one is a 400 rather than anything forgiving:
+   *
+   *   date      `optionalDate` is /^\d{4}-\d{2}-\d{2}$/, so free text 400s.
+   *   number    `hours` is z.number(); a string 400s.
+   *   textarea  currentActivity/nextAction/solution render whitespace-pre-wrap,
+   *             and a single-line input silently flattens their newlines.
+   */
+  kind = "text",
+  /** Display formatter for read mode. Editing always shows the raw value. */
+  format,
 }: {
   target: Target;
   field: keyof T & string;
@@ -152,6 +205,8 @@ export function InlineText<T extends object>({
   label: string;
   placeholder?: string;
   nullable?: boolean;
+  kind?: "text" | "date" | "number" | "textarea";
+  format?: (v: string) => string;
 }) {
   // `draft` exists only while editing, and is seeded when edit mode opens.
   //
@@ -174,6 +229,7 @@ export function InlineText<T extends object>({
   // turns that back into the conflict it always was.
   const opened = useRef<{ version: string | undefined; before: T } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Escape must ABANDON. Closing the field can in principle fire `blur` on the
   // way out, which would commit the edit Escape just discarded — a ref, not
   // state, because `commit` has to see it in the same tick.
@@ -191,8 +247,13 @@ export function InlineText<T extends object>({
   });
 
   useEffect(() => {
-    if (editing) inputRef.current?.select();
-  }, [editing]);
+    if (!editing) return;
+    // `select()` on `type="date"` and `type="number"` throws InvalidStateError
+    // in some browsers — those are not text controls. Focus is enough there.
+    if (kind === "textarea") textareaRef.current?.select();
+    else if (kind === "text") inputRef.current?.select();
+    else inputRef.current?.focus();
+  }, [editing, kind]);
 
   const commit = () => {
     setEditing(false);
@@ -205,11 +266,35 @@ export function InlineText<T extends object>({
     if (!snapshot) return;
 
     const next = draft.trim();
-    const patch = buildPatch(
-      snapshot.before,
-      { [field]: nullable && next === "" ? null : next } as never,
-      [field],
-    );
+
+    // Coerce to what the schema expects. A number field sending a string, or a
+    // date field sending free text, is a 400 the user cannot act on.
+    let outgoing: unknown;
+    if (next === "") {
+      // A NUMBER field cannot send `""` — `z.number()` rejects it, and a
+      // browser reports a value it refused to accept (letters typed into
+      // `type=number`) as an empty string, so this is the path a mistyped
+      // entry actually takes. Clearing is only meaningful when the column is
+      // nullable; otherwise say so rather than sending a 400.
+      if (kind === "number" && !nullable) {
+        toast.error(`${label} must be a number.`);
+        return;
+      }
+      outgoing = nullable ? null : "";
+    } else if (kind === "number") {
+      const n = Number(next);
+      if (!Number.isFinite(n) || n < 0) {
+        toast.error(`${label} must be a number.`);
+        return;
+      }
+      outgoing = n;
+    } else {
+      outgoing = next;
+    }
+
+    const patch = buildPatch(snapshot.before, { [field]: outgoing } as never, [
+      field,
+    ]);
     if (!Object.keys(patch).length) return;
     if (!snapshot.version) {
       toast.error("Reload before editing this — its version is missing.");
@@ -222,7 +307,7 @@ export function InlineText<T extends object>({
     return (
       <button
         type="button"
-        className="k-field k-field-edit"
+        className={`k-field k-field-edit ${kind === "textarea" ? "!h-auto min-h-[32px] items-start py-1.5" : ""}`}
         onClick={() => {
           opened.current = { version, before };
           setDraft(value);
@@ -230,33 +315,66 @@ export function InlineText<T extends object>({
         }}
         aria-label={`${label}: ${value || "empty"}. Click to edit`}
       >
-        <span className={value ? "text-k-ink" : "text-k-mute"}>
-          {value || placeholder}
+        <span
+          className={`${value ? "text-k-ink" : "text-k-mute"} ${
+            kind === "textarea" ? "line-clamp-2 whitespace-pre-wrap text-left" : ""
+          }`}
+        >
+          {value ? (format ? format(value) : value) : placeholder}
         </span>
       </button>
+    );
+  }
+
+  const onKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    // Enter COMMITS everywhere except a textarea, where it has to insert a
+    // newline — those fields exist to hold multi-line notes, and stealing
+    // Enter would make that impossible. Cmd/Ctrl+Enter saves there instead.
+    if (e.key === "Enter" && (kind !== "textarea" || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      commit();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      abandoned.current = true;
+      setEditing(false);
+    }
+  };
+
+  if (kind === "textarea") {
+    return (
+      <textarea
+        ref={textareaRef}
+        className="k-textarea"
+        rows={4}
+        aria-label={label}
+        value={draft}
+        disabled={update.isPending}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={onKeyDown}
+        autoFocus
+      />
     );
   }
 
   return (
     <input
       ref={inputRef}
+      // `type="date"` gives the native picker AND enforces the YYYY-MM-DD the
+      // schema requires, so a malformed date cannot reach the server at all.
+      type={kind === "date" ? "date" : kind === "number" ? "number" : "text"}
+      step={kind === "number" ? "any" : undefined}
+      min={kind === "number" ? 0 : undefined}
       className="k-input k-input-sm"
       aria-label={label}
       value={draft}
       disabled={update.isPending}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          commit();
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
-          abandoned.current = true;
-          setEditing(false);
-        }
-      }}
+      onKeyDown={onKeyDown}
       autoFocus
     />
   );
