@@ -114,6 +114,25 @@ export function isConflict(error: unknown): boolean {
  * so a field that is absent from `next` is skipped while one explicitly set to
  * null is sent.
  */
+/**
+ * The four columns Postgres stores as `numeric`.
+ *
+ * These are the ONLY fields that round-trip string↔number, and therefore the
+ * only ones where a loose comparison is correct.
+ *
+ * The first version compared loosely on every field, which silently ate real
+ * edits: renaming something from `"1"` to `"1.0"` (or `"01"`, or `"1e3"`, or
+ * `false` to `0`) produced an empty patch, so nothing was sent, nothing was
+ * shown, and the field closed as though it had saved. Cleverness in a
+ * comparison is how an edit disappears without an error.
+ */
+const NUMERIC_FIELDS = new Set([
+  "effortWeight",
+  "hours",
+  "manDayRate",
+  "totalAvailableHours",
+]);
+
 export function buildPatch<T extends object>(
   before: T,
   // Keys are constrained to the entity; VALUES deliberately are not. A patch
@@ -128,16 +147,69 @@ export function buildPatch<T extends object>(
     if (!(f in next)) continue;
     const a = next[f];
     const b = before[f];
-    // Numerics arrive as strings (Postgres `numeric`) and go out as numbers,
-    // so compare loosely on value rather than on type — otherwise every save
-    // re-sends every number.
     if (a === b) continue;
-    if (a != null && b != null && Number(a) === Number(b) && a !== "" && b !== "") {
+
+    // An explicitly-undefined value is "not in this patch", the same as an
+    // absent key. Emitting it makes `Object.keys` non-empty — so the caller's
+    // empty-patch guard passes — while `JSON.stringify` drops it, producing a
+    // request body of `{}` and the server's "Nothing to update".
+    if (a === undefined) continue;
+
+    if (
+      NUMERIC_FIELDS.has(f as string) &&
+      a != null &&
+      b != null &&
+      a !== "" &&
+      b !== "" &&
+      Number(a) === Number(b)
+    ) {
       continue;
     }
     patch[f as string] = a;
   }
   return patch;
+}
+
+/* ------------------------------------------------- server row -> cache shape */
+
+/**
+ * The shape a PATCH response has to be put into before it can be merged.
+ *
+ * A mutation returns the RAW v2 row from Drizzle's `.returning()`. The cache
+ * holds the v1 shape that `toV1Shape` produces. They differ in two ways that
+ * both corrupt state silently on a SUCCESSFUL save:
+ *
+ * TYPES. `numeric` columns come back as strings while the tree holds numbers.
+ * One status change on an integration was enough to flip cached `effortWeight`
+ * from `0.5` to `"0.5"`; `teamBandwidth` then evaluates `total += "0.5"` twice
+ * and gets `"00.50.5"` → `NaN`, so that person silently disappears from every
+ * capacity bucket.
+ *
+ * NAMES. Three entities rename columns between the wire and the read shape:
+ * a phase row carries `phaseName` where the tree reads `name`, and a work-log
+ * row carries `entryType`/`editHistory` where the tree reads `type`/`edits`.
+ * Merging raw leaves the key the UI actually reads at its old value — so the
+ * screen shows the pre-save value after a save that worked.
+ */
+export function normaliseRow(
+  kind: EntityKind,
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...row };
+  const num = (v: unknown) => (v === null || v === undefined ? v : Number(v));
+
+  if (kind === "integration") out.effortWeight = num(out.effortWeight);
+  if (kind === "client") {
+    out.manDayRate = num(out.manDayRate);
+    out.totalAvailableHours = num(out.totalAvailableHours);
+  }
+  if (kind === "phase" && "phaseName" in out) out.name = out.phaseName;
+  if (kind === "workLog") {
+    if ("entryType" in out) out.type = out.entryType;
+    if ("editHistory" in out) out.edits = out.editHistory;
+    out.hours = num(out.hours);
+  }
+  return out;
 }
 
 /* ---------------------------------------------------- optimistic tree edits */
@@ -164,49 +236,75 @@ function editTree(
     return tree.id === id ? (fn(as(tree)) as unknown as ClientTree) : tree;
   }
 
-  if (kind === "integration" || kind === "milestone") {
+  // EVERY branch below checks the KIND before matching an id. Ids are only
+  // unique within their own table — every `id` column is a per-table primary
+  // key and the migration preserves v1 ids verbatim — so a milestone can share
+  // an id with an integration. Matching on id alone would write an
+  // integration's `{status: "In Progress"}` onto a milestone whose statuses are
+  // Pending/Achieved/Missed.
+  if (kind === "integration") {
     return {
       ...tree,
       integrations: tree.integrations?.map((i) =>
-        kind === "integration" && hit(i)
-          ? (fn(as(i)) as unknown as typeof i)
-          : {
-              ...i,
-              milestones: i.milestones?.map((m) =>
-                hit(m) ? (fn(as(m)) as unknown as typeof m) : m,
-              ),
-            },
+        hit(i) ? (fn(as(i)) as unknown as typeof i) : i,
       ),
     };
   }
 
-  if (kind === "module" || kind === "phase") {
-    // `modules` is a sentinel key — present only when the client is in the
-    // Implementation domain. Mapping a missing one would create it as `[]` and
-    // move the client into a domain it is not in.
+  if (kind === "milestone") {
+    return {
+      ...tree,
+      integrations: tree.integrations?.map((i) => ({
+        ...i,
+        milestones: i.milestones?.map((m) =>
+          hit(m) ? (fn(as(m)) as unknown as typeof m) : m,
+        ),
+      })),
+    };
+  }
+
+  // `modules` and `workLog` are sentinel keys — present only when the client is
+  // in that domain. Mapping a missing one would create it as `[]` and move the
+  // client into a domain it is not in.
+  if (kind === "module") {
     if (!tree.modules) return tree;
     return {
       ...tree,
       modules: tree.modules.map((m) =>
-        kind === "module" && hit(m)
-          ? (fn(as(m)) as unknown as typeof m)
-          : {
-              ...m,
-              phases: m.phases?.map((p) =>
-                hit(p) ? (fn(as(p)) as unknown as typeof p) : p,
-              ),
-            },
+        hit(m) ? (fn(as(m)) as unknown as typeof m) : m,
       ),
     };
   }
 
-  if (!tree.workLog) return tree;
-  return {
-    ...tree,
-    workLog: tree.workLog.map((w) =>
-      hit(w) ? (fn(as(w)) as unknown as typeof w) : w,
-    ),
-  };
+  if (kind === "phase") {
+    if (!tree.modules) return tree;
+    return {
+      ...tree,
+      modules: tree.modules.map((m) => ({
+        ...m,
+        phases: m.phases?.map((p) =>
+          hit(p) ? (fn(as(p)) as unknown as typeof p) : p,
+        ),
+      })),
+    };
+  }
+
+  if (kind === "workLog") {
+    if (!tree.workLog) return tree;
+    return {
+      ...tree,
+      workLog: tree.workLog.map((w) =>
+        hit(w) ? (fn(as(w)) as unknown as typeof w) : w,
+      ),
+    };
+  }
+
+  // Exhaustive today. Written as a real branch rather than a fallthrough so a
+  // seventh EntityKind is a compile error here instead of silently landing in
+  // whichever branch happens to be last.
+  const exhaustive: never = kind;
+  void exhaustive;
+  return tree;
 }
 
 /** Apply an edit to every cache entry holding this client. */
@@ -223,6 +321,15 @@ function editCaches(
   qc.setQueryData<ClientTree>(keys.clients.one(clientId), (t) =>
     t ? editTree(t, kind, id, fn) : t,
   );
+
+  // The rail reads a different query. Without this, renaming a client updates
+  // the detail pane and leaves the old name in the list beside it until the
+  // next refetch — the one place the name is most visible.
+  if (kind === "client") {
+    qc.setQueryData<Record<string, unknown>[]>(keys.clients.list(), (rows) =>
+      rows?.map((r) => (r.id === id ? fn(r) : r)),
+    );
+  }
 }
 
 /* ------------------------------------------------------------ the factory */
@@ -236,17 +343,26 @@ interface UpdateArgs {
 /**
  * PATCH one entity, optimistically.
  *
- * The whole cache is snapshotted before the write and restored on failure —
- * one rollback path rather than the caller remembering a prior value. That is
- * what made v1's rollbacks unreliable: each of the 48 remembered a different
- * thing, and on conflict some of them were restoring an object the array no
- * longer contained.
+ * `onFailure` REPORTS THE ERROR, and it lives on the hook rather than being
+ * passed to each `mutate()` call. React Query skips per-call callbacks when the
+ * observer has no listeners (`mutationObserver.js`: `this.#mutateOptions &&
+ * this.hasListeners()`), and the optimistic update can itself unmount the row
+ * that owns them — filter a table to one status, change a row out of that
+ * filter, and the row is gone before the write settles. The first version put
+ * the toast there, so the entire error path was unreachable on exactly the
+ * flows most likely to fail: the row silently reappeared with its old value and
+ * nothing was ever shown.
  */
 export function useUpdateEntity(
   kind: EntityKind,
   clientId: string,
   id: string,
-  opts: { path: string; screen?: string } ,
+  opts: {
+    path: string;
+    screen?: string;
+    /** Always runs, even if the component that started the write is gone. */
+    onFailure?: (error: unknown) => void;
+  },
 ) {
   const qc = useQueryClient();
 
@@ -263,26 +379,49 @@ export function useUpdateEntity(
       // Stop in-flight refetches from landing on top of the optimistic edit
       // and reverting it a moment later.
       await qc.cancelQueries({ queryKey: keys.clients.all });
-      const snapshot = qc.getQueriesData({ queryKey: keys.clients.all });
-      editCaches(qc, clientId, kind, id, (e) => ({ ...e, ...patch }));
-      return { snapshot };
+
+      // SNAPSHOT ONE ENTITY, not the cache. The first version stored every
+      // query under ["clients"] and restored all of it on failure, so a failing
+      // edit reverted a DIFFERENT row's already-committed change. Worse, when
+      // two writes failed, the one settling last restored a snapshot containing
+      // the other's optimistic value — leaving a value the server had rejected
+      // on screen with nothing to explain it.
+      let before: Record<string, unknown> | undefined;
+      editCaches(qc, clientId, kind, id, (e) => {
+        before ??= e;
+        return { ...e, ...patch };
+      });
+      return { before };
     },
 
-    onError(_err, _vars, ctx) {
-      for (const [key, data] of ctx?.snapshot ?? []) qc.setQueryData(key, data);
+    onError(err, _vars, ctx) {
+      if (ctx?.before) {
+        const restore = ctx.before;
+        editCaches(qc, clientId, kind, id, () => restore);
+      }
+      opts.onFailure?.(err);
     },
 
     onSuccess(row) {
-      // Take the server's row, not the optimistic guess: numerics come back as
-      // strings, `updated_at` has advanced, and a trigger may have touched
-      // something the client never sent.
-      editCaches(qc, clientId, kind, id, (e) => ({ ...e, ...row }));
+      // Take the server's row, not the optimistic guess: `updated_at` has
+      // advanced and a trigger may have touched something the client never
+      // sent. Normalised first — the raw v2 row has different types and, for
+      // three entities, different key names than the cached v1 shape.
+      editCaches(qc, clientId, kind, id, (e) => ({
+        ...e,
+        ...normaliseRow(kind, row),
+      }));
     },
 
-    onSettled() {
-      // Reconcile regardless. A conflict has already been rolled back, and this
-      // pulls the winning version in behind the conflict card.
-      void qc.invalidateQueries({ queryKey: keys.clients.all });
+    onSettled(_data, error) {
+      // ONLY on failure. `onSuccess` has already written the authoritative row,
+      // so invalidating there refetches the full tree — 702 phases — for
+      // nothing, and a refetch landing over another edit still in flight makes
+      // that field visibly flip new → old → new.
+      //
+      // On failure it is worth it: the local state is a guess about why the
+      // write was rejected, and the server's answer settles it.
+      if (error) void qc.invalidateQueries({ queryKey: keys.clients.all });
     },
   });
 }

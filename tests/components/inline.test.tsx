@@ -196,10 +196,14 @@ describe("InlineSelect", () => {
         version={integ._v}
         before={integ}
         emptyLabel="Unassigned"
+        unknownSuffix="(not a current user)"
       />,
     );
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     expect(select.value).toBe("Himanshu");
+    // The suffix is a PROP, not hardcoded — "(not a current user)" is right for
+    // an assignee and nonsense on a status picker, and this component is field
+    // agnostic.
     expect(
       screen.getByRole("option", { name: /Himanshu \(not a current user\)/ }),
     ).toBeInTheDocument();

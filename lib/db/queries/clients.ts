@@ -174,14 +174,31 @@ export async function getClientTrees(
   // and it must stay that way, because verify.ts compares its result against
   // the v1 jsonb, which has no `_v` to compare to. So the token rides alongside
   // rather than through.
+  // KEYED BY KIND AND ID, not id alone. Every `id` column is a PER-TABLE
+  // primary key, and the migration preserves v1 ids verbatim — where an id only
+  // ever had to be unique inside one client's jsonb array. A milestone sharing
+  // an id with a module would take the other's `updated_at`, and that row's
+  // next PATCH would send a token that can never match: a permanent 409 loop,
+  // presented to the user as "someone else saved this first", which is untrue
+  // and never clears.
   const tokens = new Map<string, string>();
-  for (const rows of [iRows, msRows, mRows, pRows, wRows]) {
-    for (const r of rows as { id: string; _v: string }[]) tokens.set(r.id, r._v);
-  }
-  const withV = <T extends { id: string }>(node: T) => ({
-    ...node,
-    _v: tokens.get(node.id),
-  });
+  const put = (kind: string, rows: unknown[]) => {
+    for (const r of rows as { id: string; _v: string }[]) {
+      tokens.set(`${kind}:${r.id}`, r._v);
+    }
+  };
+  put("integration", iRows);
+  put("milestone", msRows);
+  put("module", mRows);
+  put("phase", pRows);
+  put("workLog", wRows);
+
+  const withV =
+    (kind: string) =>
+    <T extends { id: string }>(node: T) => ({
+      ...node,
+      _v: tokens.get(`${kind}:${node.id}`),
+    });
 
   // Bucket the children by client once, so assembly is linear rather than a
   // filter pass per client per table.
@@ -226,8 +243,8 @@ export async function getClientTrees(
       ...shaped,
       _v: c._v,
       integrations: shaped.integrations?.map((i) => ({
-        ...withV(i),
-        milestones: i.milestones?.map(withV),
+        ...withV("integration")(i),
+        milestones: i.milestones?.map(withV("milestone")),
       })),
       // `modules` and `workLog` are sentinel keys: present only when the client
       // is in that domain. Mapping a missing one would create it as `[]` and
@@ -236,12 +253,12 @@ export async function getClientTrees(
       ...(shaped.modules
         ? {
             modules: shaped.modules.map((m) => ({
-              ...withV(m),
-              phases: m.phases?.map(withV),
+              ...withV("module")(m),
+              phases: m.phases?.map(withV("phase")),
             })),
           }
         : {}),
-      ...(shaped.workLog ? { workLog: shaped.workLog.map(withV) } : {}),
+      ...(shaped.workLog ? { workLog: shaped.workLog.map(withV("workLog")) } : {}),
     };
   });
 }

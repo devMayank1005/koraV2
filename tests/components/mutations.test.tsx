@@ -111,8 +111,10 @@ describe("buildPatch", () => {
     expect(buildPatch(before, {}, ["assignee"])).toEqual({});
   });
 
-  it("never sends a field outside the whitelist", () => {
-    // Every schema is .strict(); an unexpected key is a 400.
+  it("iterates the whitelist, so an extra key is structurally unreachable", () => {
+    // Named honestly. `buildPatch` loops over `fields`, so keys outside it are
+    // never even looked at — this documents the design, it cannot fail. The
+    // real protection is that every schema is `.strict()` server-side.
     const patch = buildPatch(
       before,
       { name: "New", id: "c1", _v: "x" } as never,
@@ -186,10 +188,20 @@ describe("useUpdateEntity", () => {
       ),
     );
 
-    const { statusOf, save } = harness();
+    const { qc, statusOf, save } = harness();
     save();
 
     await waitFor(() => expect(statusOf()).toBe("Completed"));
+
+    // THE ASSERTION THIS TEST WAS MISSING. The mock returns effortWeight as a
+    // string on purpose — that is what Drizzle gives back for a `numeric`
+    // column — and the original only checked `status`, which onMutate had
+    // already written. Deleting onSuccess entirely left it green, and this is
+    // the line that would have caught the raw-row merge corrupting the cache.
+    const integ = (qc.getQueryData(keys.clients.one("c1")) as ClientTree)
+      .integrations?.[0] as unknown as { effortWeight: unknown };
+    expect(integ.effortWeight).toBe(0.5);
+    expect(typeof integ.effortWeight).toBe("number");
 
     const [, init] = vi.mocked(fetch).mock.calls[0];
     expect((init?.headers as Record<string, string>)["if-match"]).toBe(
@@ -206,7 +218,7 @@ describe("useUpdateEntity", () => {
       }),
     );
 
-    const { statusOf, save } = harness();
+    const { qc, statusOf, save } = harness();
     expect(statusOf()).toBe("In Progress");
 
     save();
@@ -221,6 +233,12 @@ describe("useUpdateEntity", () => {
     );
 
     await waitFor(() => expect(statusOf()).toBe("In Progress"));
+
+    // BOTH cache entries, not just `one()`. A rollback that restored the detail
+    // pane and left the list stale would have passed the original assertion.
+    const fromTree = (qc.getQueryData(keys.clients.tree()) as ClientTree[])[0]
+      .integrations?.[0]?.status;
+    expect(fromTree).toBe("In Progress");
   });
 });
 
@@ -252,6 +270,21 @@ describe("ConflictCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show what changed" }));
     expect(screen.getByText("Completed")).toBeInTheDocument(); // yours
     expect(screen.getByText("At Risk")).toBeInTheDocument(); // theirs
+  });
+
+  it("lists only the fields that actually differ", () => {
+    // The draft carries two fields and only one of them changed. With a
+    // single-key draft the filter is never exercised and could be deleted.
+    render(
+      <ConflictCard
+        error={conflict}
+        onReload={() => {}}
+        draft={{ status: "Completed", id: "i1" }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show what changed" }));
+    expect(screen.getByText("Status")).toBeInTheDocument();
+    expect(screen.queryByText("Id")).toBeNull();
   });
 
   it("degrades to the message for a 409 with nothing to heal from", () => {

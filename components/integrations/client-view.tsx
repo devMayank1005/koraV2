@@ -252,6 +252,7 @@ function IntegrationTable({
                       value={i.assignee ?? ""}
                       options={assignees}
                       emptyLabel="Unassigned"
+                      unknownSuffix="(not a current user)"
                       version={i._v}
                       before={i}
                     />

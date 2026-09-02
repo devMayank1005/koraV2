@@ -44,7 +44,13 @@ describe("Dialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("REFUSES to close while a write is in flight", () => {
+  it("STAYS OPEN while a write is in flight", () => {
+    // Asserts the OBSERVABLE outcome, not that a spy went uncalled. The
+    // original checked `onOpenChange` was never invoked — but the component
+    // passes `busy ? undefined : onOpenChange` to Radix, so when busy the spy
+    // is not wired at all and the assertion was guaranteed. All three
+    // onEscapeKeyDown/onPointerDownOutside/onInteractOutside guards could be
+    // deleted and it still passed.
     const onOpenChange = vi.fn();
     render(
       <Dialog open busy onOpenChange={onOpenChange} title="Edit client">
@@ -53,11 +59,33 @@ describe("Dialog", () => {
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(onOpenChange).not.toHaveBeenCalled();
+    fireEvent.pointerDown(document.body);
 
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Body")).toBeInTheDocument();
     // The close button is disabled too, not merely ignored — an enabled
     // control that does nothing reads as a broken dialog.
     expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+  });
+
+  it("...and the same dialog DOES close on Escape when idle", () => {
+    // The contrast is the point: without this, "stays open" could be true
+    // because the dialog never closes at all.
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <Dialog open onOpenChange={onOpenChange} title="Edit client">
+        <p>Body</p>
+      </Dialog>,
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    rerender(
+      <Dialog open={false} onOpenChange={onOpenChange} title="Edit client">
+        <p>Body</p>
+      </Dialog>,
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("uses the title once, and a description only when given", () => {

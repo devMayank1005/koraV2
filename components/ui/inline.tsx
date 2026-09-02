@@ -66,6 +66,7 @@ export function InlineSelect<T extends object>({
   label,
   disabled,
   emptyLabel = "—",
+  unknownSuffix = "(unrecognised)",
 }: {
   target: Target;
   field: keyof T & string;
@@ -77,11 +78,17 @@ export function InlineSelect<T extends object>({
   disabled?: boolean;
   /** What the empty option reads as. A blank row is not self-explanatory. */
   emptyLabel?: string;
+  /**
+   * Appended to a value that matches no option. Field-specific: "(not a
+   * current user)" is right for an assignee and nonsense on a status.
+   */
+  unknownSuffix?: string;
 }) {
-  const onError = useSaveFeedback();
+  const onFailure = useSaveFeedback();
   const update = useUpdateEntity(target.kind, target.clientId, target.id, {
     path: target.path,
     screen: target.screen,
+    onFailure,
   });
 
   // A <select> whose value is absent from its options silently displays the
@@ -106,13 +113,13 @@ export function InlineSelect<T extends object>({
           field,
         ]);
         if (!Object.keys(patch).length || !version) return;
-        update.mutate({ version, patch }, { onError });
+        update.mutate({ version, patch });
       }}
     >
       {choices.map((o) => (
         <option key={o} value={o}>
           {o === "" ? emptyLabel : o}
-          {o === value && !known ? " (not a current user)" : ""}
+          {o === value && !known ? ` ${unknownSuffix}` : ""}
         </option>
       ))}
     </select>
@@ -156,6 +163,16 @@ export function InlineText<T extends object>({
   // text out from under whoever is typing.
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  // THE ROW AS IT WAS WHEN EDITING BEGAN — value and OCC token together.
+  //
+  // Keeping the draft un-synced while letting `version` refresh from props was
+  // a silent lost update: click into a field, let the 60-second refetch land
+  // someone else's change and a NEW token, click away, and the old value went
+  // up with THEIR token. The server saw a valid precondition, accepted it, and
+  // their edit was reverted with no 409 and no conflict card — which defeats
+  // the entire mechanism `_v` exists for. Sending the token you actually read
+  // turns that back into the conflict it always was.
+  const opened = useRef<{ version: string | undefined; before: T } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Escape must ABANDON. Closing the field can in principle fire `blur` on the
   // way out, which would commit the edit Escape just discarded — a ref, not
@@ -165,11 +182,12 @@ export function InlineText<T extends object>({
   // the input before a dispatched blur can reach React. Kept anyway, and the
   // test says plainly that it does not cover it rather than implying it does.
   const abandoned = useRef(false);
-  const onError = useSaveFeedback();
+  const onFailure = useSaveFeedback();
 
   const update = useUpdateEntity(target.kind, target.clientId, target.id, {
     path: target.path,
     screen: target.screen,
+    onFailure,
   });
 
   useEffect(() => {
@@ -182,18 +200,22 @@ export function InlineText<T extends object>({
       abandoned.current = false;
       return;
     }
+    const snapshot = opened.current;
+    opened.current = null;
+    if (!snapshot) return;
+
     const next = draft.trim();
     const patch = buildPatch(
-      before,
+      snapshot.before,
       { [field]: nullable && next === "" ? null : next } as never,
       [field],
     );
     if (!Object.keys(patch).length) return;
-    if (!version) {
+    if (!snapshot.version) {
       toast.error("Reload before editing this — its version is missing.");
       return;
     }
-    update.mutate({ version, patch }, { onError });
+    update.mutate({ version: snapshot.version, patch });
   };
 
   if (!editing) {
@@ -202,6 +224,7 @@ export function InlineText<T extends object>({
         type="button"
         className="k-field k-field-edit"
         onClick={() => {
+          opened.current = { version, before };
           setDraft(value);
           setEditing(true);
         }}
