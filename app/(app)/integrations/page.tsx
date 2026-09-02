@@ -1,3 +1,5 @@
-export default function IntegrationsIndexPage() {
-  return <div className="p-7 text-k-ink">Integrations index</div>;
+import { TrackerIndex } from "@/components/tracker-index";
+
+export default function Page() {
+  return <TrackerIndex domain="integrations" />;
 }

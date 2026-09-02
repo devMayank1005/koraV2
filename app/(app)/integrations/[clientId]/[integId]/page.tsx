@@ -1,10 +1,8 @@
+import { IntegrationDetailView } from "@/components/integrations/detail-view";
+
 export default async function IntegrationDetailPage({
   params,
 }: PageProps<"/integrations/[clientId]/[integId]">) {
   const { clientId, integId } = await params;
-  return (
-    <div className="p-7 text-k-ink">
-      Integration · {clientId} · {integId}
-    </div>
-  );
+  return <IntegrationDetailView clientId={clientId} integId={integId} />;
 }

@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Fragment } from "react";
+import {
+  useCachedClientNames,
+  useCachedChildNames,
+} from "@/lib/query/hooks";
 
 /**
  * Breadcrumbs.
@@ -33,7 +37,7 @@ export function Breadcrumbs({
     return (
       <Fragment key={`${c.label}-${i}`}>
         {i > 0 && (
-          <span className="mx-1.5 text-k-field" aria-hidden="true">
+          <span className="mx-1.5 text-k-mute-2" aria-hidden="true">
             /
           </span>
         )}
@@ -68,6 +72,13 @@ export function Breadcrumbs({
   );
 }
 
+const SECTIONS: Record<string, string> = {
+  integrations: "Integrations",
+  implementation: "Implementation",
+  ams: "AMS & Support",
+  admin: "Admin",
+};
+
 /**
  * Breadcrumbs derived from the URL.
  *
@@ -75,37 +86,49 @@ export function Breadcrumbs({
  * in — the previous version exported a `Breadcrumbs` component that nothing
  * imported, so the app had none at all.
  *
- * Ids rather than names, for now. Resolving a client id to "Aster Retail
- * Group" needs the client tree, and fetching it here would put a request in
- * the chrome on every navigation for a label. The screens have that data
- * already and will pass richer crumbs in as they are built; this is the
- * fallback, not the destination.
+ * IDS ARE RESOLVED TO NAMES FROM CACHE ONLY. `edge_all_three` is a correct
+ * breadcrumb and a useless one; "Aster Retail Group" is what the person came
+ * here for. The reason it used to show the id was that resolving one meant
+ * fetching the client tree, and putting a request in the chrome on every
+ * navigation to obtain a label is a bad trade. That is no longer the choice:
+ * the rail has already fetched the client list by the time any tracker screen
+ * renders, so the name is sitting in the query cache and reading it is free.
+ *
+ * When the cache is empty — a hard reload deep into `/admin`, say — the id is
+ * still shown. A label is not worth a round trip, and a breadcrumb that
+ * flickers from id to name is worse than one that never changes.
  */
 export function RouteBreadcrumbs() {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
+  const [section, ...rest] = segments;
+
+  // Hooks must run unconditionally, so the early return lives below them.
+  const clientNames = useCachedClientNames();
+  const childNames = useCachedChildNames(
+    section && section !== "admin" ? rest[0] : undefined,
+  );
 
   // The dashboard is the root; a single crumb saying "Dashboard" above the
   // dashboard is noise.
   if (!segments.length || segments[0] === "dashboard") return null;
 
-  const SECTIONS: Record<string, string> = {
-    integrations: "Integrations",
-    implementation: "Implementation",
-    ams: "AMS & Support",
-    admin: "Admin",
-  };
-
-  const [section, ...rest] = segments;
   const crumbs: Crumb[] = [
     { label: "Dashboard", href: "/dashboard" },
     { label: SECTIONS[section] ?? section, href: `/${section}` },
   ];
 
   for (const [i, seg] of rest.entries()) {
+    const id = decodeURIComponent(seg);
     crumbs.push({
-      label: decodeURIComponent(seg),
-      href: i < rest.length - 1 ? `/${section}/${rest.slice(0, i + 1).join("/")}` : undefined,
+      // The first segment under a section is a client; deeper ones are its
+      // integrations or modules. A phase is neither — it is already its own
+      // name in the URL, so the fallback is the right answer there.
+      label: (i === 0 ? clientNames.get(id) : childNames.get(id)) ?? id,
+      href:
+        i < rest.length - 1
+          ? `/${section}/${rest.slice(0, i + 1).join("/")}`
+          : undefined,
     });
   }
 

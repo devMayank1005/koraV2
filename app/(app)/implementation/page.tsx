@@ -1,3 +1,5 @@
-export default function ImplementationIndexPage() {
-  return <div className="p-7 text-k-ink">Implementation index</div>;
+import { TrackerIndex } from "@/components/tracker-index";
+
+export default function Page() {
+  return <TrackerIndex domain="implementation" />;
 }
