@@ -3,6 +3,7 @@
  *
  *   pnpm peek                 # the local dev database
  *   pnpm peek --prod          # the live Supabase project (READ ONLY)
+ *   pnpm peek --prod --compare  # ...and diff v1 jsonb against v2 counts
  *   pnpm peek --client Aster  # drill into one client, by name or id
  *
  * Read-only by construction: every statement here is a SELECT, and the
@@ -22,6 +23,10 @@ loadEnv({ path: path.resolve(process.cwd(), ".env.local"), quiet: true });
 
 const argv = process.argv.slice(2);
 const useProd = argv.includes("--prod");
+// Opt-in. The v1-vs-v2 comparison exists to build confidence DURING the
+// migration; once you trust it, it is noise on every run of a command whose
+// job is to show you what the new app reads.
+const useCompare = argv.includes("--compare");
 const clientArg = (() => {
   const i = argv.indexOf("--client");
   return i >= 0 ? argv[i + 1] : undefined;
@@ -101,7 +106,7 @@ async function main() {
     }
 
     /* ------------------------------------------- v1 vs v2, production ---- */
-    if (useProd) {
+    if (useProd && useCompare) {
       rule("v1 (live app) vs v2 (what the new app reads)");
       const cmp = await sql`
         select
@@ -164,14 +169,23 @@ async function main() {
     if (!clients.length) {
       console.log("  (no match)");
     } else {
+      // "domain" is which trackers a client appears in at all -- the thing
+      // migration 0003 made explicit. A client can be in a domain with nothing
+      // in it, which is why this is a stored flag and not a count.
+      console.log("  domain = which trackers this client appears in\n");
       console.log(
-        `  ${pad("name", 34)}${pad("dom", 6)}${pad("cur", 5)}${pad("master assignee", 20)}`,
+        `  ${pad("name", 34)}${pad("domain", 10)}${pad("cur", 5)}${pad("master assignee", 20)}`,
       );
       for (const c of clients) {
-        const dom =
-          (c.has_implementation ? "I" : "·") + (c.has_ams ? "A" : "·");
+        const dom = c.has_implementation
+          ? c.has_ams
+            ? "Impl+AMS"
+            : "Impl"
+          : c.has_ams
+            ? "AMS"
+            : "—";
         console.log(
-          `  ${pad(String(c.name).slice(0, 32), 34)}${pad(dom, 6)}${pad(c.currency, 5)}${pad(c.master_assignee ?? "—", 20)}`,
+          `  ${pad(String(c.name).slice(0, 32), 34)}${pad(dom, 10)}${pad(c.currency, 5)}${pad(c.master_assignee ?? "—", 20)}`,
         );
       }
       if (!clientArg && clients.length === 30) console.log("  … (first 30)");
