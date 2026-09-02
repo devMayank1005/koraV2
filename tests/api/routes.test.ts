@@ -392,14 +392,77 @@ describe("deployment misconfiguration is caught, not hidden", () => {
   });
 
   it("health reports the localhost database rather than just failing", async () => {
+    // Production only: locally a localhost database is the correct answer.
+    vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("DATABASE_URL", "postgresql://mayank@localhost:5432/kora_dev");
     vi.stubEnv("KORA_APP_URL", "http://localhost:3000");
 
     const { GET: health } = await import("@/app/api/health/route");
-    const body = await (await health()).json();
+    const body = await (await health(
+      new NextRequest("https://kora.test/api/health"),
+    )).json();
 
     expect(body.checks.database).toContain("LOCALHOST");
     expect(body.checks.appUrl).toContain("LOCALHOST");
+    expect(body.ok).toBe(false);
+  });
+
+  it("does NOT flag localhost in development, where it is correct", async () => {
+    // An endpoint that permanently reports ok:false during local development
+    // teaches everyone to ignore it.
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("DATABASE_URL", "postgresql://mayank@localhost:5432/kora_dev");
+    vi.stubEnv("KORA_APP_URL", "http://localhost:3000");
+
+    const { GET: health } = await import("@/app/api/health/route");
+    const body = await (await health(
+      new NextRequest("https://kora.test/api/health"),
+    )).json();
+
+    expect(body.checks.database).not.toContain("LOCALHOST");
+    expect(body.checks.appUrl).not.toContain("LOCALHOST");
+  });
+
+  it("health does not call out to anything unless asked", async () => {
+    // The default must stay a cheap local check — otherwise a public endpoint
+    // becomes a way to make the server hammer Graph and Supabase.
+    vi.stubEnv("SUPABASE_URL", "https://x.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "key");
+    vi.stubEnv("AZURE_CLIENT_ID", "id");
+    vi.stubEnv("AZURE_CLIENT_SECRET", "secret");
+    vi.stubEnv("AZURE_TENANT_ID", "tenant");
+    vi.stubGlobal("fetch", () => {
+      throw new Error("health made an outbound call without ?deep=1");
+    });
+
+    const { GET: health } = await import("@/app/api/health/route");
+    const body = await (await health(
+      new NextRequest("https://kora.test/api/health"),
+    )).json();
+
+    expect(body.checks.storage).toContain("configured");
+    expect(body.checks.sso).toContain("configured");
+  });
+
+  it("health says REJECTED, not configured, for a credential that is refused", async () => {
+    // "configured" only ever meant "non-empty" — a much weaker claim than it
+    // reads as. Pasting a whole .env file into a dashboard can append a
+    // trailing comment to a value, giving a credential that is present, wrong,
+    // and reported as fine.
+    vi.stubEnv("AZURE_CLIENT_ID", "id");
+    vi.stubEnv("AZURE_CLIENT_SECRET", "wrong-secret");
+    vi.stubEnv("AZURE_TENANT_ID", "tenant");
+    vi.stubGlobal("fetch", async () => new Response("bad", { status: 401 }));
+
+    const { resetGraphTokenCache } = await import("@/lib/mail/graph");
+    resetGraphTokenCache();
+
+    const { GET: health } = await import("@/app/api/health/route");
+    const body = await (await health(
+      new NextRequest("https://kora.test/api/health?deep=1"),
+    )).json();
+
+    expect(body.checks.sso).toContain("REJECTED");
     expect(body.ok).toBe(false);
   });
 });
@@ -473,5 +536,77 @@ describe("a route fails on the dependencies it actually uses", () => {
     // A redirect to Microsoft, not a 500.
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("login.microsoftonline.com");
+  });
+});
+
+describe("the SSO callback never returns a raw 500", () => {
+  /**
+   * This actually happened on the deployment: Microsoft authenticated the
+   * person, redirected back with a code, and the callback answered
+   * `{"error":"Something went wrong","ref":"4tjqkj"}`. That is the worst
+   * outcome of an OAuth round trip — authenticated, then stranded on a JSON
+   * error page with no message and no way back.
+   *
+   * The cause was subtle. `ctx.db` is a lazy getter, so
+   * `resolveSsoUser(db, …)` evaluates it as an ARGUMENT: `getDb()` threw
+   * before the function was entered, and the gate's own `lookup_failed`
+   * handling never ran. withPublic's catch-all then did what it is supposed to
+   * do for an API route.
+   */
+  beforeEach(() => {
+    vi.stubEnv("AZURE_CLIENT_ID", "id");
+    vi.stubEnv("AZURE_CLIENT_SECRET", "secret");
+    vi.stubEnv("AZURE_TENANT_ID", "tenant");
+    vi.stubEnv("KORA_APP_URL", "https://kora.test");
+  });
+
+  it("redirects rather than 500s when the database is unreachable", async () => {
+    const { getDb } = await import("@/lib/db/client");
+    vi.mocked(getDb).mockImplementation(() => {
+      throw new Error("DATABASE_URL points at localhost");
+    });
+
+    const { GET: callback } = await import(
+      "@/app/api/auth/microsoft/callback/route"
+    );
+    const res = await callback(
+      new NextRequest(
+        "https://kora.test/api/auth/microsoft/callback?code=abc&state=xyz",
+        { headers: { host: "kora.test" } },
+      ),
+    );
+
+    expect(res.status).toBe(307);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("/login?ssoError=");
+    expect(location).not.toContain("500");
+  });
+
+  it("still bounces with a legible code when Microsoft reports an error", async () => {
+    const { GET: callback } = await import(
+      "@/app/api/auth/microsoft/callback/route"
+    );
+    const res = await callback(
+      new NextRequest(
+        "https://kora.test/api/auth/microsoft/callback?error=access_denied",
+        { headers: { host: "kora.test" } },
+      ),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("ssoError=msft_access_denied");
+  });
+
+  it("every bounce code has a message the login page can show", async () => {
+    // A bounce to a code with no message renders a blank explanation, which is
+    // barely better than the 500 it replaced.
+    const { SSO_ERRORS, ssoErrorMessage } = await import("@/lib/auth/messages");
+    for (const code of [
+      "unexpected_error", "not_configured", "state_invalid", "no_code",
+      "exchange_failed", "graph_failed", "no_email", "not_authorized",
+      "sso_ambiguous", "lookup_failed", "domain_not_allowed", "host_mismatch",
+    ]) {
+      expect(SSO_ERRORS[code], `no message for ${code}`).toBeTruthy();
+    }
+    expect(ssoErrorMessage("msft_access_denied")).toBeTruthy();
   });
 });

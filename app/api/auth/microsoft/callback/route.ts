@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import type { Db } from "@/lib/db/client";
 import { withPublic } from "@/lib/api/handler";
 import { azureApp, appUrl } from "@/lib/azure/config";
 import { readAndClearSsoCookie, verifyState } from "@/lib/auth/microsoft/state";
@@ -26,7 +27,45 @@ const bounce = (code: string) =>
  * Validation order matters: everything through the nonce check happens BEFORE
  * any outbound call, so a fabricated callback costs one HMAC and nothing else.
  */
-export const GET = withPublic(async ({ req, db, ip, userAgent }) => {
+export const GET = withPublic(async (ctx) => {
+  /**
+   * A REDIRECT ENDPOINT REACHED BY A BROWSER ALWAYS REDIRECTS.
+   *
+   * withPublic's catch-all turns an unexpected throw into a JSON 500 with a
+   * correlation id, which is right for an API route and wrong here: the person
+   * has just authenticated with Microsoft and would land on
+   * `{"error":"Something went wrong","ref":"4tjqkj"}` — stranded, with no
+   * message and no way back.
+   *
+   * It happened for a reason worth recording. `ctx.db` is a lazy getter, so
+   * `resolveSsoUser(db, …)` evaluates it as an ARGUMENT and `getDb()` throws
+   * before the function is entered — meaning the gate's careful
+   * `lookup_failed` handling never ran. Any failure inside this handler now
+   * becomes a bounce with a code the login page can phrase, and the real cause
+   * goes to the server log where an operator can find it.
+   */
+  try {
+    return await handleCallback(ctx);
+  } catch (err) {
+    console.error(
+      "SSO callback failed:",
+      err instanceof Error ? (err.stack ?? err.message) : String(err),
+    );
+    return bounce("unexpected_error");
+  }
+});
+
+async function handleCallback({
+  req,
+  db,
+  ip,
+  userAgent,
+}: {
+  req: NextRequest;
+  db: Db;
+  ip: string | null;
+  userAgent: string | null;
+}) {
   const params = new URL(req.url).searchParams;
 
   // Single-use, unconditionally and first: a cancelled attempt must not leave
@@ -86,4 +125,4 @@ export const GET = withPublic(async ({ req, db, ip, userAgent }) => {
 
   await setSessionCookie(session.token);
   return NextResponse.redirect(`${appUrl()}${state.next ?? "/dashboard"}`);
-});
+}
