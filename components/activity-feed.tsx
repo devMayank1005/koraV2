@@ -1,9 +1,13 @@
 "use client";
 
-import { Paperclip, Pencil, History } from "lucide-react";
+import { useState } from "react";
+import { Paperclip, Pencil, History, Trash2 } from "lucide-react";
 import { AVATAR_PALETTE } from "@/lib/domain/constants";
 import { fmtDate, fmtDateTime } from "@/lib/utils/dates";
 import { EmptyState } from "@/components/ui/states";
+import { ActivityComposer, useActivityItemMutations } from "@/components/activity-composer";
+import { ConfirmDialog } from "@/components/ui/dialog";
+import { useCanEdit, useSession, type SessionUser } from "@/lib/query/permissions";
 import type { ActivityEntry } from "@/lib/domain/types";
 
 /**
@@ -24,22 +28,45 @@ export function ActivityFeed({
   variant = "full",
   limit,
   emptyHint,
+  /** Supply all three to make the feed writable. Omit for a read-only view. */
+  parentKind,
+  parentId,
+  clientId,
 }: {
   entries: ActivityEntry[];
   /** `full` for a detail pane, `compact` for a side panel, `inline` for tiles. */
   variant?: "full" | "compact" | "inline";
   limit?: number;
   emptyHint?: string;
+  parentKind?: "integration" | "phase";
+  parentId?: string;
+  clientId?: string;
 }) {
   const shown = limit ? entries.slice(0, limit) : entries;
+  const canEdit = useCanEdit();
+  const session = useSession();
+  const writable = Boolean(canEdit && parentKind && parentId && clientId);
+
+  const composer = writable ? (
+    <div className={shown.length ? "mb-4" : ""}>
+      <ActivityComposer
+        parentKind={parentKind!}
+        parentId={parentId!}
+        clientId={clientId!}
+      />
+    </div>
+  ) : null;
 
   if (shown.length === 0) {
     return (
-      <EmptyState
-        title="No updates yet"
-        hint={emptyHint ?? "Progress notes will appear here."}
-        icon={History}
-      />
+      <>
+        {composer}
+        <EmptyState
+          title="No updates yet"
+          hint={emptyHint ?? "Progress notes will appear here."}
+          icon={History}
+        />
+      </>
     );
   }
 
@@ -47,6 +74,7 @@ export function ActivityFeed({
 
   return (
     <>
+      {composer}
       <ol className={compact ? "space-y-2.5" : "space-y-3.5"}>
         {shown.map((e) => (
           <li key={e.id} className="flex gap-2.5">
@@ -105,6 +133,14 @@ export function ActivityFeed({
                   {e.history.length} earlier version
                   {e.history.length === 1 ? "" : "s"}
                 </p>
+              )}
+
+              {writable && mayModify(e, session) && (
+                <EntryControls
+                  parentKind={parentKind!}
+                  parentId={parentId!}
+                  entry={e}
+                />
               )}
             </div>
           </li>
@@ -209,4 +245,112 @@ function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+
+/**
+ * Author-or-admin, mirroring the server exactly.
+ *
+ * `assertMayModify` matches the STORED DISPLAY NAME against either `name` or
+ * `username` — it is a string comparison, not an id, because that is what the
+ * data holds. Offering controls the server would refuse is worse than not
+ * offering them.
+ */
+function mayModify(entry: ActivityEntry, user: SessionUser | null): boolean {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  const author = entry.addedBy ?? "";
+  return author === user.name || author === user.username;
+}
+
+function EntryControls({
+  parentKind,
+  parentId,
+  entry,
+}: {
+  parentKind: "integration" | "phase";
+  parentId: string;
+  entry: ActivityEntry;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const { edit, remove } = useActivityItemMutations({
+    parentKind,
+    parentId,
+    entryId: entry.id,
+  });
+
+  if (editing) {
+    return (
+      <div className="mt-2">
+        <textarea
+          className="k-textarea"
+          rows={3}
+          aria-label="Edit update"
+          value={draft}
+          disabled={edit.isPending}
+          onChange={(ev) => setDraft(ev.target.value)}
+          autoFocus
+        />
+        <div className="mt-1.5 flex gap-2">
+          <button
+            type="button"
+            className="k-btn k-btn-primary k-btn-sm"
+            disabled={edit.isPending || !draft.trim()}
+            onClick={() =>
+              edit.mutate(draft.trim(), { onSuccess: () => setEditing(false) })
+            }
+          >
+            {edit.isPending ? "Saving…" : "Save"}
+          </button>
+          <button
+            type="button"
+            className="k-btn k-btn-ghost k-btn-sm"
+            disabled={edit.isPending}
+            onClick={() => setEditing(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="mt-1 flex gap-2">
+        <button
+          type="button"
+          className="k-btn k-btn-link"
+          onClick={() => {
+            setDraft(entry.update);
+            setEditing(true);
+          }}
+        >
+          <Pencil size={10} strokeWidth={1.5} aria-hidden />
+          Edit
+        </button>
+        <button
+          type="button"
+          className="k-btn k-btn-link !text-k-text-red"
+          onClick={() => setConfirming(true)}
+        >
+          <Trash2 size={10} strokeWidth={1.5} aria-hidden />
+          Delete
+        </button>
+      </div>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Delete this update?"
+        body="Updates cannot be restored. Its edit history goes with it."
+        busy={remove.isPending}
+        onConfirm={() =>
+          remove.mutate(undefined, { onSuccess: () => setConfirming(false) })
+        }
+      />
+    </>
+  );
 }

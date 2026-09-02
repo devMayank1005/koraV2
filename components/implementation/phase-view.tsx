@@ -126,7 +126,12 @@ export function PhaseDetailView({
                       </span>
                     </div>
                     <div className="mt-3">
-                      <ActivityFeed entries={phase.updates ?? []} />
+                      <ActivityFeed
+                        entries={phase.updates ?? []}
+                        parentKind="phase"
+                        parentId={phase.id}
+                        clientId={clientId}
+                      />
                     </div>
                   </section>
                 </div>

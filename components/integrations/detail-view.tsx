@@ -104,7 +104,12 @@ export function IntegrationDetailView({
                     </span>
                   </div>
                   <div className="mt-3">
-                    <ActivityFeed entries={integration.timeline ?? []} />
+                    <ActivityFeed
+                      entries={integration.timeline ?? []}
+                      parentKind="integration"
+                      parentId={integration.id}
+                      clientId={clientId}
+                    />
                   </div>
                 </section>
               </div>
