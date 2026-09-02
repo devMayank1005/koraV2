@@ -3,6 +3,8 @@ import { updateWorkLogEntry, archiveWorkLogEntry } from "@/lib/db/mutations/trac
 import { workLogUpdate } from "@/lib/validation/entities";
 import { updated, removed } from "@/lib/api/mutate";
 
+import { actorName } from "@/lib/api/actor";
+
 export const runtime = "nodejs";
 
 export const PATCH = withAuth<{ entryId: string }>({ role: "editor" }, (ctx) =>
@@ -14,6 +16,6 @@ export const PATCH = withAuth<{ entryId: string }>({ role: "editor" }, (ctx) =>
 
 export const DELETE = withAuth<{ entryId: string }>({ role: "editor" }, (ctx) =>
   removed(ctx, "Archive work log entry", "ams_work_log", (token) =>
-    archiveWorkLogEntry(ctx.db, ctx.params.entryId, token),
+    archiveWorkLogEntry(ctx.db, ctx.params.entryId, token, actorName(ctx)),
   ),
 );

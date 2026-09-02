@@ -144,6 +144,21 @@ export async function archiveOrThrow<T extends PgTable & Archival>(
   entity: string,
   id: string,
   token: string,
+  /** Who is archiving. Recorded so the row can be recovered knowingly. */
+  actor?: string,
 ): Promise<Record<string, unknown>> {
-  return updateOrThrow(db, table, entity, id, token, { archived: true });
+  // WHEN AND BY WHOM, not just `archived = true`.
+  //
+  // Every table has carried `archived_at` and `archived_by` since the v2 schema
+  // and nothing ever wrote them, so every soft-deleted row looked identical to
+  // one archived two years ago. That matters because soft delete is the whole
+  // recovery story here — the UI tells people an administrator can restore a
+  // record from the database — and without a timestamp or an actor there is no
+  // way to find the right row or know who to ask. The audit log cannot fill the
+  // gap either: it records the entity as a TABLE NAME with no record id.
+  return updateOrThrow(db, table, entity, id, token, {
+    archived: true,
+    archivedAt: new Date().toISOString(),
+    archivedBy: actor ?? null,
+  });
 }

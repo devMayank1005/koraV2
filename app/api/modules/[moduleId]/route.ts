@@ -3,6 +3,8 @@ import { updateModule, archiveModule } from "@/lib/db/mutations/tracker";
 import { moduleUpdate } from "@/lib/validation/entities";
 import { updated, removed } from "@/lib/api/mutate";
 
+import { actorName } from "@/lib/api/actor";
+
 export const runtime = "nodejs";
 
 export const PATCH = withAuth<{ moduleId: string }>({ role: "editor" }, (ctx) =>
@@ -14,6 +16,6 @@ export const PATCH = withAuth<{ moduleId: string }>({ role: "editor" }, (ctx) =>
 /** Archives the module and its nine phases together. */
 export const DELETE = withAuth<{ moduleId: string }>({ role: "editor" }, (ctx) =>
   removed(ctx, "Archive module", "modules", (token) =>
-    archiveModule(ctx.db, ctx.params.moduleId, token),
+    archiveModule(ctx.db, ctx.params.moduleId, token, actorName(ctx)),
   ),
 );

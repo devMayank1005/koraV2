@@ -89,15 +89,21 @@ export async function updateIntegration(
  * table counts milestones across the client — leaving them active would keep
  * them in that count while they were unreachable from any screen.
  */
-export async function archiveIntegration(db: AnyDb, id: string, token: string) {
+export async function archiveIntegration(
+  db: AnyDb,
+  id: string,
+  token: string,
+  actor?: string,
+) {
   return db.transaction(async (tx) => {
     const t = tx as unknown as AnyDb;
-    await updateOrThrow(t, integrations, "integration", id, token, {
-      archived: true,
-    });
+  // Cascaded rows get the same stamp as their parent, so a recovery can find
+  // everything that went at once rather than guessing from timestamps.
+  const stamp = { archived: true, archivedAt: new Date().toISOString(), archivedBy: actor ?? null };
+    await updateOrThrow(t, integrations, "integration", id, token, stamp);
     const gone = await t
       .update(milestones)
-      .set({ archived: true })
+      .set(stamp)
       .where(and(eq(milestones.integrationId, id), eq(milestones.archived, false)))
       .returning({ id: milestones.id });
     return { id, archivedMilestones: gone.length };
@@ -155,8 +161,12 @@ export async function updateMilestone(
   return withToken(db, milestones, id, row);
 }
 
-export const archiveMilestone = (db: AnyDb, id: string, token: string) =>
-  archiveOrThrow(db, milestones, "milestone", id, token);
+export const archiveMilestone = (
+  db: AnyDb,
+  id: string,
+  token: string,
+  actor?: string,
+) => archiveOrThrow(db, milestones, "milestone", id, token, actor);
 
 /* ------------------------------------------------- modules and their phases */
 
@@ -215,13 +225,21 @@ export async function updateModule(
 }
 
 /** Archives a module and its nine phases together, for the same reason. */
-export async function archiveModule(db: AnyDb, id: string, token: string) {
+export async function archiveModule(
+  db: AnyDb,
+  id: string,
+  token: string,
+  actor?: string,
+) {
   return db.transaction(async (tx) => {
     const t = tx as unknown as AnyDb;
-    await updateOrThrow(t, modules, "module", id, token, { archived: true });
+  // Cascaded rows get the same stamp as their parent, so a recovery can find
+  // everything that went at once rather than guessing from timestamps.
+  const stamp = { archived: true, archivedAt: new Date().toISOString(), archivedBy: actor ?? null };
+    await updateOrThrow(t, modules, "module", id, token, stamp);
     const gone = await t
       .update(phases)
-      .set({ archived: true })
+      .set(stamp)
       .where(and(eq(phases.moduleId, id), eq(phases.archived, false)))
       .returning({ id: phases.id });
     return { id, archivedPhases: gone.length };
@@ -337,8 +355,12 @@ export async function updateWorkLogEntry(
   return withToken(db, amsWorkLog, id, row);
 }
 
-export const archiveWorkLogEntry = (db: AnyDb, id: string, token: string) =>
-  archiveOrThrow(db, amsWorkLog, "work log entry", id, token);
+export const archiveWorkLogEntry = (
+  db: AnyDb,
+  id: string,
+  token: string,
+  actor?: string,
+) => archiveOrThrow(db, amsWorkLog, "work log entry", id, token, actor);
 
 /* ------------------------------------------------------------------ shared */
 

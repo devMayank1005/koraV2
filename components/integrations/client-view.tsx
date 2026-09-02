@@ -7,6 +7,7 @@ import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
 import { InlineSelect } from "@/components/ui/inline";
+import { ArchiveButton } from "@/components/ui/archive-button";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import { STATUSES } from "@/lib/domain/constants";
@@ -187,6 +188,7 @@ function IntegrationTable({
             <th className="px-3 py-2 text-left font-semibold">Due</th>
             <th className="px-3 py-2 text-left font-semibold">Milestones</th>
             <th className="px-3 py-2 text-left font-semibold">Last update</th>
+            {canEdit && <th className="w-[44px] px-3 py-2" />}
           </tr>
         </thead>
         <tbody>
@@ -315,6 +317,21 @@ function IntegrationTable({
                     <span className="text-k-mute">Never</span>
                   )}
                 </td>
+                {canEdit && (
+                  <td className="px-3 py-2.5">
+                    <ArchiveButton
+                      path={`/api/integrations/${encodeURIComponent(i.id)}`}
+                      version={i._v}
+                      label={i.name}
+                      cascade={
+                        ms.total > 0
+                          ? `Its ${ms.total} milestone${ms.total === 1 ? "" : "s"} go with it.`
+                          : undefined
+                      }
+                      screen="integrations"
+                    />
+                  </td>
+                )}
               </tr>
             );
           })}

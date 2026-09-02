@@ -246,6 +246,34 @@ describe("client archive cascade", () => {
     const res = await archiveIntegration(db, i.id, tok.v);
     expect(res.archivedMilestones).toBe(1);
   });
+
+  it("records WHEN and BY WHOM it was archived, on the row and its cascade", async () => {
+    // Every table has carried archived_at/archived_by since the v2 schema and
+    // nothing ever wrote them, so a row archived a minute ago was
+    // indistinguishable from one archived two years ago. That matters because
+    // soft delete IS the recovery story — the UI tells people an administrator
+    // can restore the record — and the audit log cannot fill the gap: it
+    // records the entity as a TABLE NAME with no record id, so it can never be
+    // joined back to a row.
+    const { cid } = await populated();
+    const [i] = await db.select().from(integrations).where(eq(integrations.clientId, cid));
+    const [tok] = await db
+      .select({ v: sql<string>`to_char(${integrations.updatedAt} at time zone 'utc','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
+      .from(integrations).where(eq(integrations.id, i.id));
+
+    await archiveIntegration(db, i.id, tok.v, "Meera Raghavan");
+
+    const [row] = await db.select().from(integrations).where(eq(integrations.id, i.id));
+    expect(row.archived).toBe(true);
+    expect(row.archivedBy).toBe("Meera Raghavan");
+    expect(Date.parse(String(row.archivedAt))).not.toBeNaN();
+
+    // The cascade carries the SAME stamp, so a recovery can find everything
+    // that went at once rather than guessing from adjacent timestamps.
+    const [ms] = await db.select().from(milestones).where(eq(milestones.integrationId, i.id));
+    expect(ms.archivedBy).toBe("Meera Raghavan");
+    expect(ms.archivedAt).toBe(row.archivedAt);
+  });
 });
 
 /* ================================================================= modules */

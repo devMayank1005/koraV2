@@ -88,14 +88,18 @@ export async function archiveClient(
   db: AnyDb,
   id: string,
   token: string,
+  actor?: string,
 ): Promise<{ id: string; archived: Record<string, number> }> {
   return db.transaction(async (tx) => {
     const t = tx as unknown as AnyDb;
+  // Cascaded rows get the same stamp as their parent, so a recovery can find
+  // everything that went at once rather than guessing from timestamps.
+  const stamp = { archived: true, archivedAt: new Date().toISOString(), archivedBy: actor ?? null };
 
     // The client goes first, under its OCC token. If someone else has edited
     // it since this tab loaded, this throws and the transaction rolls back
     // before a single child row is touched.
-    await updateOrThrow(t, clients, "client", id, token, { archived: true });
+    await updateOrThrow(t, clients, "client", id, token, stamp);
 
     const counts: Record<string, number> = {};
     const cascade = [
@@ -113,7 +117,7 @@ export async function archiveClient(
       // complete on any client that is actively being edited.
       const rows = await t
         .update(table)
-        .set({ archived: true })
+        .set(stamp)
         .where(and(eq(table.clientId, id), eq(table.archived, false)))
         .returning({ id: table.id });
       counts[label] = rows.length;

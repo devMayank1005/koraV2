@@ -7,6 +7,8 @@ import { getClientTree } from "@/lib/db/queries/clients";
 import { assertUserId } from "@/lib/auth/account";
 import { signAttachmentsIn } from "@/lib/storage";
 
+import { actorName } from "@/lib/api/actor";
+
 export const runtime = "nodejs";
 
 export const GET = withAuth<{ clientId: string }>(
@@ -43,6 +45,6 @@ export const DELETE = withAuth<{ clientId: string }>(
   { role: "admin" },
   (ctx) =>
     removed(ctx, "Archive client", "clients", (token) =>
-      archiveClient(ctx.db, ctx.params.clientId, token),
+      archiveClient(ctx.db, ctx.params.clientId, token, actorName(ctx)),
     ),
 );

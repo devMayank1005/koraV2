@@ -3,6 +3,8 @@ import { updateMilestone, archiveMilestone } from "@/lib/db/mutations/tracker";
 import { milestoneUpdate } from "@/lib/validation/entities";
 import { updated, removed } from "@/lib/api/mutate";
 
+import { actorName } from "@/lib/api/actor";
+
 export const runtime = "nodejs";
 
 export const PATCH = withAuth<{ milestoneId: string }>(
@@ -18,6 +20,6 @@ export const DELETE = withAuth<{ milestoneId: string }>(
   { role: "editor" },
   (ctx) =>
     removed(ctx, "Archive milestone", "milestones", (token) =>
-      archiveMilestone(ctx.db, ctx.params.milestoneId, token),
+      archiveMilestone(ctx.db, ctx.params.milestoneId, token, actorName(ctx)),
     ),
 );

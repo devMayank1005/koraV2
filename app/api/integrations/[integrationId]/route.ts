@@ -3,6 +3,8 @@ import { updateIntegration, archiveIntegration } from "@/lib/db/mutations/tracke
 import { integrationUpdate } from "@/lib/validation/entities";
 import { updated, removed } from "@/lib/api/mutate";
 
+import { actorName } from "@/lib/api/actor";
+
 export const runtime = "nodejs";
 
 export const PATCH = withAuth<{ integrationId: string }>(
@@ -19,6 +21,6 @@ export const DELETE = withAuth<{ integrationId: string }>(
   { role: "editor" },
   (ctx) =>
     removed(ctx, "Archive integration", "integrations", (token) =>
-      archiveIntegration(ctx.db, ctx.params.integrationId, token),
+      archiveIntegration(ctx.db, ctx.params.integrationId, token, actorName(ctx)),
     ),
 );

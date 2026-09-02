@@ -5,6 +5,7 @@ import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { RagPill, QueryLevelPill } from "@/components/ui/status";
 import { InlineSelect, InlineText } from "@/components/ui/inline";
+import { ArchiveButton } from "@/components/ui/archive-button";
 import { useCanEdit } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import {
@@ -443,6 +444,7 @@ function WorkLogTable({
             <th className="w-[150px] px-3 py-2 text-left font-semibold">Severity</th>
             <th className="w-[130px] px-3 py-2 text-left font-semibold">Status</th>
             <th className="w-[100px] px-3 py-2 text-right font-semibold">Hours</th>
+            {canEdit && <th className="w-[44px] px-3 py-2" />}
           </tr>
         </thead>
         <tbody>
@@ -547,6 +549,16 @@ function WorkLogTable({
                     </span>
                   )}
                 </td>
+                {canEdit && (
+                  <td className="px-3 py-2.5">
+                    <ArchiveButton
+                      path={`/api/work-log/${encodeURIComponent(e.id)}`}
+                      version={e._v}
+                      label={e.description || "this entry"}
+                      screen="ams"
+                    />
+                  </td>
+                )}
               </tr>
             );
           })}
