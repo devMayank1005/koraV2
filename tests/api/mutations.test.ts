@@ -148,6 +148,18 @@ describe("optimistic concurrency", () => {
     expect(err.extra.current.description).toBe("theirs");
     expect(err.extra.current._v).toBeTruthy();
 
+    // THE CASING OF `current` IS PART OF THE CONTRACT, and until now nothing
+    // asserted it. `currentRow` builds this with `to_jsonb(<table>)`, which
+    // emits the DATABASE's column names, while every success response comes
+    // back from Drizzle in camelCase — so the client converts before healing
+    // from it. `description` is a single word and spelled identically either
+    // way, so the assertion above passes whatever the casing is; the client's
+    // conversion was pinned only to a hand-written mock of what I believed the
+    // server sent. A MULTI-WORD column settles it against the real thing.
+    expect(err.extra.current).toHaveProperty("man_day_rate");
+    expect(err.extra.current).toHaveProperty("has_ams");
+    expect(err.extra.current).not.toHaveProperty("manDayRate");
+
     const [row] = await db.select().from(clients).where(eq(clients.id, c.id as string));
     expect(row.description).toBe("theirs"); // the losing write did not land
   });

@@ -25,7 +25,8 @@
     "seed:auth": "tsx scripts/seed-auth-dev.ts",
     "seed:dev": "tsx scripts/seed-dev.ts",
     "peek": "tsx scripts/peek.ts",
-    "verify:admin-lock": "tsx scripts/verify-admin-lock.ts"
+    "verify:admin-lock": "tsx scripts/verify-admin-lock.ts",
+    "verify:occ": "tsx scripts/verify-occ.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
