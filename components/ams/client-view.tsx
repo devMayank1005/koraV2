@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { RagPill, QueryLevelPill } from "@/components/ui/status";
 import { InlineSelect, InlineText } from "@/components/ui/inline";
 import { ArchiveButton } from "@/components/ui/archive-button";
+import { AddWorkLogDialog } from "@/components/create/work-log-dialog";
 import { useCanEdit } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import {
@@ -48,6 +50,7 @@ export function AmsClientView({ clientId }: { clientId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const canEdit = useCanEdit();
+  const [addingEntry, setAddingEntry] = useState(false);
 
   const totals = useMemo(
     () => (client ? amsTotals(client, from, to) : null),
@@ -72,8 +75,27 @@ export function AmsClientView({ clientId }: { clientId: string }) {
                   {client.workLog?.length ?? 0} entries all time
                 </p>
               </div>
-              {amsClientRag(client) && <RagPill rag={amsClientRag(client)!} />}
+              <div className="flex items-center gap-3">
+                {amsClientRag(client) && <RagPill rag={amsClientRag(client)!} />}
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="k-btn k-btn-primary k-btn-sm"
+                    onClick={() => setAddingEntry(true)}
+                  >
+                    <Plus size={13} strokeWidth={1.5} aria-hidden />
+                    Entry
+                  </button>
+                )}
+              </div>
             </header>
+
+            <AddWorkLogDialog
+              clientId={clientId}
+              clientName={client.name}
+              open={addingEntry}
+              onOpenChange={setAddingEntry}
+            />
 
             <div className="mt-4 flex flex-wrap items-end gap-2">
               <label className="k-field">

@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { X, Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
 import { InlineSelect, InlineText } from "@/components/ui/inline";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
+import { AddModuleDialog } from "@/components/create/module-dialog";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
   PHASES,
@@ -43,6 +44,8 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
   const [selected, setSelected] = useState<{ moduleId: string; phase: string } | null>(
     null,
   );
+  const [addingModule, setAddingModule] = useState(false);
+  const canEditClient = useCanEdit();
 
   const modules = client?.modules ?? [];
   const progress = client ? implProgress(client) : null;
@@ -86,8 +89,25 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
                     </span>
                   )}
                   {rag && <RagPill rag={rag} />}
+                  {canEditClient && (
+                    <button
+                      type="button"
+                      className="k-btn k-btn-primary k-btn-sm"
+                      onClick={() => setAddingModule(true)}
+                    >
+                      <Plus size={13} strokeWidth={1.5} aria-hidden />
+                      Module
+                    </button>
+                  )}
                 </div>
               </header>
+
+              <AddModuleDialog
+                clientId={clientId}
+                clientName={client.name}
+                open={addingModule}
+                onOpenChange={setAddingModule}
+              />
 
               {modules.length === 0 ? (
                 <div className="mt-5">

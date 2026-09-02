@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Clock } from "lucide-react";
+import { AlertTriangle, Clock, Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
 import { InlineSelect } from "@/components/ui/inline";
 import { ArchiveButton } from "@/components/ui/archive-button";
+import { AddIntegrationDialog } from "@/components/create/integration-dialog";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import { STATUSES } from "@/lib/domain/constants";
@@ -36,6 +37,7 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   const [filter, setFilter] = useState<string>("all");
   const canEdit = useCanEdit();
   const assignees = useAssigneeOptions();
+  const [adding, setAdding] = useState(false);
 
   const client = query.data;
 
@@ -72,10 +74,29 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                   {client.masterAssignee && <> · Lead: {client.masterAssignee}</>}
                 </p>
               </div>
-              {integRagLabel(client) && (
-                <RagPill rag={integRagLabel(client)!} />
-              )}
+              <div className="flex items-center gap-3">
+                {integRagLabel(client) && (
+                  <RagPill rag={integRagLabel(client)!} />
+                )}
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="k-btn k-btn-primary k-btn-sm"
+                    onClick={() => setAdding(true)}
+                  >
+                    <Plus size={13} strokeWidth={1.5} aria-hidden />
+                    Integration
+                  </button>
+                )}
+              </div>
             </header>
+
+            <AddIntegrationDialog
+              clientId={clientId}
+              clientName={client.name}
+              open={adding}
+              onOpenChange={setAdding}
+            />
 
             {/* Status filter chips — new in the reskin; the old app had no
                 way to narrow this table at all. */}
