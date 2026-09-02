@@ -6,7 +6,10 @@ import { AlertTriangle, Clock } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
+import { InlineSelect } from "@/components/ui/inline";
+import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
+import { STATUSES } from "@/lib/domain/constants";
 import {
   integRagLabel,
   sortIntegWorstFirst,
@@ -30,6 +33,8 @@ import type { Integration } from "@/lib/domain/types";
 export function IntegrationsClientView({ clientId }: { clientId: string }) {
   const query = useClient(clientId);
   const [filter, setFilter] = useState<string>("all");
+  const canEdit = useCanEdit();
+  const assignees = useAssigneeOptions();
 
   const client = query.data;
 
@@ -115,7 +120,12 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                   }
                 />
               ) : (
-                <IntegrationTable clientId={clientId} rows={shown} />
+                <IntegrationTable
+                  clientId={clientId}
+                  rows={shown}
+                  canEdit={canEdit}
+                  assignees={assignees}
+                />
               )}
             </div>
           </>
@@ -156,9 +166,13 @@ function Chip({
 function IntegrationTable({
   clientId,
   rows,
+  canEdit,
+  assignees,
 }: {
   clientId: string;
   rows: Integration[];
+  canEdit: boolean;
+  assignees: string[];
 }) {
   return (
     // Its own scroll container: the page body must never scroll sideways, and
@@ -203,10 +217,47 @@ function IntegrationTable({
                   )}
                 </td>
                 <td className="px-3 py-2.5">
-                  <StatusPill status={i.status} size="sm" />
+                  {canEdit ? (
+                    <InlineSelect
+                      target={{
+                        kind: "integration",
+                        clientId,
+                        id: i.id,
+                        path: `/api/integrations/${encodeURIComponent(i.id)}`,
+                        screen: "integrations",
+                      }}
+                      field="status"
+                      label={`Status for ${i.name}`}
+                      value={i.status}
+                      options={STATUSES}
+                      version={i._v}
+                      before={i}
+                    />
+                  ) : (
+                    <StatusPill status={i.status} size="sm" />
+                  )}
                 </td>
                 <td className="px-3 py-2.5 text-k-ink-3">
-                  {i.assignee || <span className="text-k-mute">Unassigned</span>}
+                  {canEdit ? (
+                    <InlineSelect
+                      target={{
+                        kind: "integration",
+                        clientId,
+                        id: i.id,
+                        path: `/api/integrations/${encodeURIComponent(i.id)}`,
+                        screen: "integrations",
+                      }}
+                      field="assignee"
+                      label={`Assignee for ${i.name}`}
+                      value={i.assignee ?? ""}
+                      options={assignees}
+                      emptyLabel="Unassigned"
+                      version={i._v}
+                      before={i}
+                    />
+                  ) : (
+                    i.assignee || <span className="text-k-mute">Unassigned</span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
                   {i.dueDate ? (

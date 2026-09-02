@@ -6,6 +6,7 @@ import { Sidebar, type SidebarUser } from "@/components/sidebar";
 import { RouteBreadcrumbs } from "@/components/breadcrumbs";
 import { useUi, useEffectiveRole } from "@/lib/store/ui";
 import { Providers } from "@/components/providers";
+import { SessionProvider } from "@/lib/query/permissions";
 
 /**
  * Everything around a screen: sidebar, banners, mobile drawer.
@@ -36,7 +37,8 @@ export function AppChrome({
   const banners = (offline ? 1 : 0) + (previewing ? 1 : 0);
 
   return (
-    <Providers>
+    <SessionProvider value={user}>
+      <Providers>
       {previewing && (
         <div className="k-banner-viewas">
           <Eye size={14} strokeWidth={1.5} />
@@ -118,7 +120,8 @@ export function AppChrome({
           <main className="min-w-0 flex-1">{children}</main>
         </div>
       </div>
-    </Providers>
+      </Providers>
+    </SessionProvider>
   );
 }
 

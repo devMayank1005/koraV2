@@ -1,0 +1,70 @@
+"use client";
+
+import { createContext, useContext } from "react";
+import { useUsers } from "./hooks";
+import { useUi } from "@/lib/store/ui";
+
+/**
+ * Who is looking, and what they may do.
+ *
+ * The role comes from the SERVER, through the authenticated layout, not from a
+ * client fetch: the layout has already validated the session against the
+ * database on this request, and re-asking over the network would be both slower
+ * and less trustworthy.
+ *
+ * NOTHING HERE IS A SECURITY BOUNDARY. Every route re-checks the role against a
+ * fresh database read, so this can only ever hide a control. Hiding it is still
+ * worth doing — an editor-only button that 403s when clicked is a worse
+ * experience than one that was never offered.
+ */
+
+export interface SessionUser {
+  name: string;
+  username: string;
+  role: string;
+}
+
+const SessionContext = createContext<SessionUser | null>(null);
+
+export const SessionProvider = SessionContext.Provider;
+
+export function useSession(): SessionUser | null {
+  return useContext(SessionContext);
+}
+
+/**
+ * May this person write?
+ *
+ * Honours an admin's view-as preview through the same store the sidebar reads,
+ * so previewing as a viewer actually hides the write controls rather than
+ * leaving them enabled behind a banner claiming otherwise.
+ */
+export function useCanEdit(): boolean {
+  const user = useSession();
+  const viewAsRole = useUi((s) => s.viewAsRole);
+  if (!user) return false;
+  const effective = user.role === "admin" && viewAsRole ? viewAsRole : user.role;
+  return effective === "editor" || effective === "admin";
+}
+
+/**
+ * Assignee choices, as the data actually stores them.
+ *
+ * Assignee columns hold typed display NAMES, not user ids — the same fragile
+ * key the daily digest routes on. Offering the user list as the options at
+ * least stops new rows adding new spellings, but it cannot fix the ones already
+ * there: in production two assignee strings are first-name-only ("Himanshu",
+ * "Nisha") and match no user, so the work attached to them is invisible on
+ * those people's own dashboard.
+ *
+ * The current value is always included even when it matches nobody, because a
+ * `<select>` silently shows the first option when its value is absent — which
+ * would make the screen quietly misreport who owns the row.
+ */
+export function useAssigneeOptions(current?: string | null): string[] {
+  const { data } = useUsers();
+  const names = (data ?? []).map((u) => u.name).filter(Boolean).sort();
+  const out = ["", ...names];
+  if (current && !out.includes(current)) out.push(current);
+  return out;
+}
