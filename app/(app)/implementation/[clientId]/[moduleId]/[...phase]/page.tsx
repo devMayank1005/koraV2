@@ -1,5 +1,6 @@
 import { PHASES } from "@/lib/domain/constants";
 import { notFound } from "next/navigation";
+import { PhaseDetailView } from "@/components/implementation/phase-view";
 
 /**
  * Phase detail.
@@ -29,8 +30,10 @@ export default async function PhaseDetailPage({
   if (!PHASES.includes(phaseName as (typeof PHASES)[number])) notFound();
 
   return (
-    <div className="p-7 text-k-ink">
-      Phase · {clientId} · {moduleId} · {phaseName}
-    </div>
+    <PhaseDetailView
+      clientId={clientId}
+      moduleId={moduleId}
+      phaseName={phaseName}
+    />
   );
 }
