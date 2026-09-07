@@ -4,11 +4,15 @@ import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useClientList } from "@/lib/query/hooks";
+import { keys } from "@/lib/query/keys";
+import { api } from "@/lib/api/fetcher";
+import { ExportMenu } from "@/components/export-menu";
 import { useUpdateEntity } from "@/lib/query/mutations";
 import { QueryState } from "@/components/ui/states";
 import { InlineText } from "@/components/ui/inline";
-import type { ClientSummary } from "@/lib/db/queries/clients";
+import type { ClientSummary, ClientTree } from "@/lib/db/queries/clients";
 import { ApiError } from "@/lib/api/fetcher";
 
 type DomainId = "all" | "integrations" | "implementation" | "ams";
@@ -35,6 +39,7 @@ const DOMAINS: { id: DomainId; label: string }[] = [
  * a domain with nothing in it yet.
  */
 export function ClientsTab() {
+  const qc = useQueryClient();
   const query = useClientList();
   const [domain, setDomain] = useState<DomainId>("all");
   const [search, setSearch] = useState("");
@@ -93,6 +98,30 @@ export function ClientsTab() {
         <span className="ml-auto text-[11.5px] text-k-mute-2">
           {rows.length} of {all.length} shown
         </span>
+        <ExportMenu
+          label="Export"
+          items={(["integrations", "impl", "ams"] as const).map((d) => ({
+            label: `Excel (${d === "impl" ? "Implementation" : d === "ams" ? "AMS" : "Integrations"})`,
+            run: async () => {
+              // Fetched on CLICK, not held by the tab. The roll-up columns —
+              // at-risk counts, phase progress, total hours — are computed from
+              // the children, and `ClientSummary` carries only counts. Loading
+              // 702 phases on every admin visit to render a button nobody may
+              // press is the wrong trade; `fetchQuery` reuses the cache when
+              // the dashboard has already populated it.
+              const trees = await qc.fetchQuery<ClientTree[]>({
+                queryKey: keys.clients.tree(),
+                queryFn: () =>
+                  api<{ clients: ClientTree[] }>("/api/clients?view=tree").then(
+                    (r) => r.clients,
+                  ),
+              });
+              const { exportAdminTableExcel } = await import("@/lib/export/excel");
+              await exportAdminTableExcel(d, trees);
+              toast.success("Spreadsheet downloaded.");
+            },
+          }))}
+        />
       </div>
 
       {/* Roll-up over what is currently filtered, not over everything — the

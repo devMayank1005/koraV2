@@ -95,6 +95,30 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                         toast.success("Report downloaded.");
                       },
                     },
+                    {
+                      label: "Excel (Integrations)",
+                      run: async () => {
+                        const { exportClientExcel } = await import("@/lib/export/excel");
+                        await exportClientExcel("integrations", client);
+                        toast.success("Spreadsheet downloaded.");
+                      },
+                    },
+                    {
+                      label: "Excel (Milestones)",
+                      // Disabled rather than hidden: a client with no
+                      // milestones would otherwise get a valid, empty file and
+                      // wonder what went wrong.
+                      disabledReason: (client.integrations ?? []).some(
+                        (i) => (i.milestones ?? []).length > 0,
+                      )
+                        ? undefined
+                        : "none yet",
+                      run: async () => {
+                        const { exportClientExcel } = await import("@/lib/export/excel");
+                        await exportClientExcel("milestones", client);
+                        toast.success("Spreadsheet downloaded.");
+                      },
+                    },
                   ]}
                 />
                 {canEdit && (

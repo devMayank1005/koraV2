@@ -1,12 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { useAudit, type AuditParams } from "@/lib/query/admin";
+import { toast } from "sonner";
+import { useAudit, type AuditParams, type AuditPage } from "@/lib/query/admin";
+import { api } from "@/lib/api/fetcher";
+import { ExportMenu } from "@/components/export-menu";
 import { useUsers } from "@/lib/query/hooks";
 import { QueryState } from "@/components/ui/states";
 import { fmtDateTime } from "@/lib/utils/dates";
 
 const PAGE_SIZE = 50;
+
+/**
+ * The server clamps `limit` to 200, so that is the most one export can carry.
+ * Said out loud in the menu label and again in the toast when it truncates —
+ * an export that silently stops at 200 rows reads as a complete record.
+ */
+const EXPORT_MAX = 200;
 
 /** Midnight N days ago, as the ISO string the route compares against. */
 function daysAgo(n: number): string {
@@ -67,6 +77,33 @@ export function AuditTab() {
       <div className="k-card-head flex-wrap gap-3">
         <h2 className="k-card-title">Audit log</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <ExportMenu
+            label="Export"
+            items={[
+              {
+                label: `Excel (this filter, up to ${EXPORT_MAX})`,
+                disabledReason: total === 0 ? "nothing to export" : undefined,
+                run: async () => {
+                  // Re-fetches with the SAME filter rather than exporting the
+                  // 50 rows on screen. v1 did the same, and the alternative —
+                  // exporting one page — is the kind of thing nobody notices
+                  // until an audit request comes back short.
+                  const query = new URLSearchParams();
+                  for (const [k, v] of Object.entries({ ...params, limit: EXPORT_MAX, offset: 0 })) {
+                    if (v !== undefined && v !== "") query.set(k, String(v));
+                  }
+                  const page = await api<AuditPage>(`/api/audit?${query}`);
+                  const { exportAuditExcel } = await import("@/lib/export/excel");
+                  await exportAuditExcel(page.rows);
+                  toast.success(
+                    page.total > page.rows.length
+                      ? `Exported ${page.rows.length} of ${page.total} events — narrow the filter for the rest.`
+                      : `Exported ${page.rows.length} events.`,
+                  );
+                },
+              },
+            ]}
+          />
           <select
             className="k-select k-input-sm w-[150px]"
             value={user}
