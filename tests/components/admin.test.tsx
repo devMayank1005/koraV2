@@ -149,3 +149,53 @@ describe("ViewAsCard — the activation that was missing", () => {
     expect(window.localStorage.getItem("itk_ui") ?? "").not.toContain("viewAsRole");
   });
 });
+
+/**
+ * Read-only mode, on the client side.
+ *
+ * This is the COURTESY half — the boundary is `assertWritable` in withAuth,
+ * which does not trust the browser. What this buys is that write controls
+ * disappear instead of appearing and then failing, which is the difference
+ * between "read-only for now" and "this app is broken".
+ *
+ * Routed through `useCanEdit` because every write control in the app already
+ * asks it, so there is no list of components to keep in step.
+ */
+describe("read-only build flag", () => {
+  const set = (on: boolean) => {
+    if (on) process.env.NEXT_PUBLIC_KORA_READ_ONLY = "1";
+    else delete process.env.NEXT_PUBLIC_KORA_READ_ONLY;
+  };
+  afterEach(() => set(false));
+
+  it("is off unless explicitly set to 1", async () => {
+    const { isReadOnlyBuild } = await import("@/lib/query/permissions");
+    set(false);
+    expect(isReadOnlyBuild()).toBe(false);
+    process.env.NEXT_PUBLIC_KORA_READ_ONLY = "0";
+    expect(isReadOnlyBuild()).toBe(false);
+    set(true);
+    expect(isReadOnlyBuild()).toBe(true);
+  });
+
+  it("makes useCanEdit false for an ADMIN, not just for lesser roles", async () => {
+    // The one that matters. A flag that stops editors but lets admins through
+    // would leave exactly the people most likely to change something able to.
+    const { useCanEdit, SessionProvider } = await import("@/lib/query/permissions");
+    const { renderHook } = await import("@testing-library/react");
+
+    const wrap = (children: React.ReactNode) => (
+      <SessionProvider value={{ name: "A", username: "a", role: "admin" }}>
+        {children}
+      </SessionProvider>
+    );
+
+    set(false);
+    const on = renderHook(() => useCanEdit(), { wrapper: ({ children }) => wrap(children) });
+    expect(on.result.current).toBe(true);
+
+    set(true);
+    const off = renderHook(() => useCanEdit(), { wrapper: ({ children }) => wrap(children) });
+    expect(off.result.current).toBe(false);
+  });
+});

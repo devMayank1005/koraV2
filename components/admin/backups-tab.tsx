@@ -8,6 +8,7 @@ import {
   useRestoreClient,
 } from "@/lib/query/admin";
 import { QueryState } from "@/components/ui/states";
+import { isReadOnlyBuild } from "@/lib/query/permissions";
 import { fmtDateTime } from "@/lib/utils/dates";
 import { ApiError } from "@/lib/api/fetcher";
 
@@ -125,6 +126,7 @@ function BackupsCard() {
  * than to fail on click.
  */
 function ArchivedClientsCard() {
+  const readOnly = isReadOnlyBuild();
   const query = useArchivedClients();
   const restore = useRestoreClient();
   const rows = query.data ?? [];
@@ -172,11 +174,13 @@ function ArchivedClientsCard() {
               <button
                 type="button"
                 className="k-btn k-btn-outline k-btn-sm flex-none"
-                disabled={c.nameTaken || restore.isPending}
+                disabled={readOnly || c.nameTaken || restore.isPending}
                 title={
-                  c.nameTaken
-                    ? "Rename the live client first, or this restore will be refused."
-                    : undefined
+                  readOnly
+                    ? "Kora is read-only right now."
+                    : c.nameTaken
+                      ? "Rename the live client first, or this restore will be refused."
+                      : undefined
                 }
                 onClick={() =>
                   restore.mutate(c.id, {

@@ -3,7 +3,13 @@ import { getDb, type Db } from "@/lib/db/client";
 import { readSessionCookie } from "@/lib/auth/cookies";
 import { validateSession, type SessionUser } from "@/lib/auth/session";
 import { clientIp, userAgent } from "./ip";
-import { AppError, errorResponse, forbidden, unauthorized } from "./errors";
+import {
+  AppError,
+  errorResponse,
+  forbidden,
+  readOnly,
+  unauthorized,
+} from "./errors";
 
 /**
  * The wrapper every authenticated route uses.
@@ -42,6 +48,37 @@ export interface AuthOptions {
   role?: Role;
 }
 
+/**
+ * THE READ-ONLY GATE.
+ *
+ * During the parallel run the new app is live for everyone to read while the
+ * old app stays the only place anything is edited. Two apps writing the same
+ * database is not survivable here — one edit in the old app rewrites a whole
+ * client's subtree in v2 from the v1 jsonb, silently replacing anything this
+ * app wrote — so "only one writer" is the property the whole arrangement rests
+ * on, and it is enforced here rather than by asking people not to.
+ *
+ * ONE PLACE IS ENOUGH, which is worth stating because it looks too easy: every
+ * write route in the app goes through `withAuth`, including the four activity
+ * routes, which reach it via `activityCollection`. Login, logout and the two
+ * crons use `withPublic` and are deliberately NOT gated — people must still be
+ * able to sign in and out, and the nightly backup should keep running.
+ *
+ * An environment variable rather than a build flag, so lifting it is a Vercel
+ * setting change and a redeploy, not a code change.
+ */
+export function isReadOnly(): boolean {
+  return process.env.KORA_READ_ONLY === "1";
+}
+
+function assertWritable(): void {
+  if (!isReadOnly()) return;
+  throw readOnly(
+    "Kora is read-only right now. Please make this change in the current Kora — " +
+      "everything here is a live view of the same data.",
+  );
+}
+
 export function withAuth<P = Record<string, string>>(
   opts: AuthOptions,
   handler: (ctx: Ctx<P>) => Promise<NextResponse>,
@@ -74,6 +111,7 @@ export function withAuth<P = Record<string, string>>(
       // cross-site form POSTs CSRF relies on; this is the cheap second layer.
       if (req.method !== "GET" && req.method !== "HEAD") {
         assertSameOrigin(req);
+        assertWritable();
       }
 
       return await handler({

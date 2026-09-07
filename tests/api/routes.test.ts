@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
+import {
+  describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi,
+} from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { NextRequest } from "next/server";
@@ -66,6 +68,9 @@ const { GET: getSnapshots, POST: postSnapshot } = await import(
 const { POST: runDigestCron } = await import("@/app/api/cron/daily-digest/route");
 const { GET: getClients, POST: postClient } = await import("@/app/api/clients/route");
 const { GET: getBackups } = await import("@/app/api/backups/route");
+const { isReadOnly } = await import("@/lib/api/handler");
+const { POST: login } = await import("@/app/api/auth/login/route");
+const { POST: logout } = await import("@/app/api/auth/logout/route");
 const { PATCH: patchClient, DELETE: deleteClient } = await import(
   "@/app/api/clients/[clientId]/route"
 );
@@ -706,5 +711,98 @@ describe("admin reads added in step 16", () => {
   it("GET /api/backups is refused outright when signed out", async () => {
     signInAs(null);
     expect((await getBackups(req("/api/backups"))).status).toBe(401);
+  });
+});
+
+/**
+ * THE READ-ONLY GATE.
+ *
+ * The parallel run rests on exactly one property: only one app writes this
+ * database. Two writers is not survivable — one edit in the old app rewrites a
+ * whole client's subtree in v2 from the v1 jsonb, silently replacing anything
+ * written here — so this is the assertion that the arrangement holds.
+ *
+ * The flag is set and cleared around each case rather than for the file, so a
+ * failure cannot leak into the suites above and turn every other write test
+ * into a 423.
+ */
+describe("read-only mode", () => {
+  const setReadOnly = (on: boolean) => {
+    if (on) process.env.KORA_READ_ONLY = "1";
+    else delete process.env.KORA_READ_ONLY;
+  };
+
+  afterEach(() => setReadOnly(false));
+
+  it("refuses every kind of write with 423, not 403", async () => {
+    // 403 would say "not you". 423 says "not anyone, not yet" — a different
+    // thing to the person reading it and to any client deciding to retry.
+    signInAs("admin");
+    setReadOnly(true);
+
+    const cases: [string, Promise<Response>][] = [
+      ["POST /api/clients", postClient(req("/api/clients", {
+        method: "POST", body: { name: "Should Not Exist" },
+      }))],
+      ["PUT settings", putDigestRecipients(req("/api/settings/digest-recipients", {
+        method: "PUT", body: { emails: ["a@b.test"] },
+      }))],
+      ["POST /api/snapshots", postSnapshot(req("/api/snapshots", { method: "POST" }))],
+    ];
+
+    for (const [label, p] of cases) {
+      const res = await p;
+      expect(res.status, label).toBe(423);
+      const body = await res.json();
+      expect(body.readOnly, `${label} must be recognisable without matching prose`).toBe(true);
+      expect(body.error, label).toMatch(/current Kora/i);
+    }
+  });
+
+  it("still allows every READ", async () => {
+    // The entire point: people use this app all day, they just cannot edit.
+    signInAs("viewer");
+    setReadOnly(true);
+    expect((await getClients(req("/api/clients"))).status).toBe(200);
+    signInAs("admin");
+    expect((await getAudit(req("/api/audit"))).status).toBe(200);
+    expect((await getSnapshots(req("/api/snapshots"))).status).toBe(200);
+  });
+
+  it("does NOT block signing in or out", async () => {
+    // Both are withPublic, so the gate in withAuth cannot reach them — but that
+    // is a fact about the current wiring, and locking people out of their own
+    // session would be the worst possible failure of a read-only flag.
+    setReadOnly(true);
+    signInAs(null);
+
+    const inRes = await login(req("/api/auth/login", {
+      method: "POST", body: { username: "meera", password: "correct-horse" },
+    }));
+    expect(inRes.status).not.toBe(423);
+
+    signInAs("admin");
+    const outRes = await logout(req("/api/auth/logout", { method: "POST" }));
+    expect(outRes.status).not.toBe(423);
+  });
+
+  it("writes work normally when the flag is unset", async () => {
+    // Guards the guard: without this the suite would pass with the gate stuck
+    // permanently on, which is a far worse bug than it being off.
+    signInAs("admin");
+    setReadOnly(false);
+    const res = await postClient(req("/api/clients", {
+      method: "POST", body: { name: `Gate Off ${Date.now()}` },
+    }));
+    expect(res.status).toBe(201);
+  });
+
+  it("is off by default, so a missing variable never silently freezes the app", () => {
+    delete process.env.KORA_READ_ONLY;
+    expect(isReadOnly()).toBe(false);
+    process.env.KORA_READ_ONLY = "0";
+    expect(isReadOnly()).toBe(false);
+    process.env.KORA_READ_ONLY = "1";
+    expect(isReadOnly()).toBe(true);
   });
 });

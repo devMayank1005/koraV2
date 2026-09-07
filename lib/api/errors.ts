@@ -35,6 +35,16 @@ export const conflict = (m: string, extra?: Record<string, unknown>) =>
   new AppError(409, m, extra);
 export const tooManyRequests = (m: string) => new AppError(429, m);
 
+/**
+ * 423 Locked — the whole application is read-only right now.
+ *
+ * Distinct from 403 on purpose. A 403 says "not you"; this says "not anyone,
+ * not yet", which is a different thing for the person reading it and a
+ * different thing for any client deciding whether to offer a retry. It carries
+ * `readOnly: true` so the UI can recognise it without matching on prose.
+ */
+export const readOnly = (m: string) => new AppError(423, m, { readOnly: true });
+
 function corrId(): string {
   return Math.random().toString(36).slice(2, 8);
 }

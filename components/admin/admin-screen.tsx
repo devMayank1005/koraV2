@@ -6,6 +6,7 @@ import { ClientsTab } from "./clients-tab";
 import { AuditTab } from "./audit-tab";
 import { SettingsTab } from "./settings-tab";
 import { BackupsTab } from "./backups-tab";
+import { isReadOnlyBuild } from "@/lib/query/permissions";
 
 /**
  * Admin.
@@ -33,6 +34,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 export function AdminScreen({ userCount }: { userCount: number }) {
   const [tab, setTab] = useState<TabId>("users");
+  const readOnly = isReadOnlyBuild();
 
   return (
     <div className="p-6 md:px-7 md:pb-8">
@@ -41,6 +43,17 @@ export function AdminScreen({ userCount }: { userCount: number }) {
         {userCount} {userCount === 1 ? "account" : "accounts"} · role-based
         access · every mutation is logged
       </p>
+
+      {/* Said here as well as in the top banner. Every control on this screen
+          is a write, so under read-only the screen looks stripped — and an
+          admin who does not know why will assume it failed to load. */}
+      {readOnly && (
+        <div className="k-callout mb-[18px]">
+          Admin actions are unavailable while Kora is read-only. Manage users,
+          settings and restores in the current Kora; everything here still
+          reads live.
+        </div>
+      )}
 
       <div className="k-tabs" role="tablist" aria-label="Admin sections">
         {TABS.map((t) => (

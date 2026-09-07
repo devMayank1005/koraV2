@@ -42,9 +42,23 @@ export function useSession(): SessionUser | null {
 export function useCanEdit(): boolean {
   const user = useSession();
   const viewAsRole = useUi((s) => s.viewAsRole);
+  // Read-only parallel run: nobody edits here, whatever their role. Routed
+  // through this one hook because every write control in the app already asks
+  // it — so the controls disappear rather than appearing and then failing,
+  // which is what teaches people an app is broken.
+  //
+  // NOT the security boundary. The boundary is `assertWritable` in withAuth,
+  // which does not trust the client; this is the courtesy half, and it is a
+  // NEXT_PUBLIC_ variable precisely because it carries no authority.
+  if (isReadOnlyBuild()) return false;
   if (!user) return false;
   const effective = user.role === "admin" && viewAsRole ? viewAsRole : user.role;
   return effective === "editor" || effective === "admin";
+}
+
+/** Mirrors the server's KORA_READ_ONLY, for hiding controls only. */
+export function isReadOnlyBuild(): boolean {
+  return process.env.NEXT_PUBLIC_KORA_READ_ONLY === "1";
 }
 
 /**

@@ -6,6 +6,7 @@ import * as Menu from "@radix-ui/react-dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useClientList } from "@/lib/query/hooks";
+import { isReadOnlyBuild } from "@/lib/query/permissions";
 import { keys } from "@/lib/query/keys";
 import { api } from "@/lib/api/fetcher";
 import { ExportMenu } from "@/components/export-menu";
@@ -179,6 +180,7 @@ export function ClientsTab() {
  * and it means a failed toggle rolls back only its own row.
  */
 function ClientRow({ client: c }: { client: ClientSummary }) {
+  const readOnly = isReadOnlyBuild();
   const update = useUpdateEntity("client", c.id, c.id, {
     path: `/api/clients/${encodeURIComponent(c.id)}`,
     screen: "admin",
@@ -212,6 +214,9 @@ function ClientRow({ client: c }: { client: ClientSummary }) {
   return (
     <tr className="border-b border-k-line-2 last:border-b-0">
                   <td className="px-[18px] py-2">
+                    {readOnly ? (
+                      <span className="text-[12.5px] font-medium text-k-ink">{c.name}</span>
+                    ) : (
                     <InlineText
                       target={{
                         kind: "client",
@@ -226,6 +231,7 @@ function ClientRow({ client: c }: { client: ClientSummary }) {
                       before={c as unknown as Record<string, unknown>}
                       label={`Rename ${c.name}`}
                     />
+                    )}
                   </td>
                   <td className="px-[18px] py-2">
                     <div className="flex gap-1">
@@ -254,6 +260,7 @@ function ClientRow({ client: c }: { client: ClientSummary }) {
                     {c.counts.workLog}
                   </td>
                   <td className="px-[18px] py-2 text-right">
+                    {!readOnly && (
                     <Menu.Root>
                       <Menu.Trigger asChild>
                         <button
@@ -287,6 +294,7 @@ function ClientRow({ client: c }: { client: ClientSummary }) {
                         </Menu.Content>
                       </Menu.Portal>
                     </Menu.Root>
+                    )}
                   </td>
     </tr>
   );

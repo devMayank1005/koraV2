@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useCapacityWeights } from "@/lib/query/hooks";
+import { isReadOnlyBuild } from "@/lib/query/permissions";
 import {
   useDigestRecipients,
   useSaveDigestRecipients,
@@ -36,6 +37,7 @@ export function SettingsTab() {
  * that reason — echoing the input back would show entries that were not stored.
  */
 function DigestRecipientsCard() {
+  const readOnly = isReadOnlyBuild();
   const query = useDigestRecipients();
   const save = useSaveDigestRecipients();
   const [text, setText] = useState<string | null>(null);
@@ -92,7 +94,7 @@ function DigestRecipientsCard() {
           className="k-textarea k-mono text-[11.5px]"
           rows={7}
           value={value}
-          disabled={query.isPending}
+          disabled={readOnly || query.isPending}
           onChange={(e) => {
             setText(e.target.value);
             setError(undefined);
@@ -104,7 +106,7 @@ function DigestRecipientsCard() {
         <button
           type="button"
           className="k-btn k-btn-primary k-btn-sm"
-          disabled={save.isPending || query.isPending}
+          disabled={readOnly || save.isPending || query.isPending}
           onClick={submit}
         >
           {save.isPending ? "Saving…" : "Save recipients"}
@@ -132,6 +134,7 @@ const WEIGHT_FIELDS = [
  * has been measured by ever since.
  */
 function CapacityWeightsCard() {
+  const readOnly = isReadOnlyBuild();
   const stored = useCapacityWeights();
   const save = useSaveCapacityWeights();
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
@@ -192,6 +195,7 @@ function CapacityWeightsCard() {
               type="number"
               step="any"
               min={0}
+              disabled={readOnly}
               className="k-input"
               value={values[f.key]}
               onChange={(e) => {
@@ -207,7 +211,7 @@ function CapacityWeightsCard() {
         <button
           type="button"
           className="k-btn k-btn-primary k-btn-sm"
-          disabled={save.isPending}
+          disabled={readOnly || save.isPending}
           onClick={submit}
         >
           {save.isPending ? "Saving…" : "Save weights"}

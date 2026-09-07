@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { MoreHorizontal, ShieldAlert } from "lucide-react";
 import { useUsers } from "@/lib/query/hooks";
-import { useSession } from "@/lib/query/permissions";
+import { useSession, isReadOnlyBuild } from "@/lib/query/permissions";
 import { QueryState } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { UserDialog } from "./user-dialog";
@@ -64,6 +64,10 @@ function lastActiveLabel(ts: string | null): string {
 
 export function UsersTab() {
   const session = useSession();
+  // Every control on this screen is a write, so read-only hides all of them
+  // rather than letting an admin press one and collect a 423. The screen stays
+  // useful: the table, the lockout state and the audit trail are all reads.
+  const readOnly = isReadOnlyBuild();
   const query = useUsers();
   const users = (query.data ?? []).filter(isAdminView);
 
@@ -127,22 +131,24 @@ export function UsersTab() {
         <div className="k-card overflow-hidden">
           <div className="k-card-head">
             <h2 className="k-card-title">Users</h2>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="k-btn k-btn-outline k-btn-sm"
-                onClick={() => setChangingPassword(true)}
-              >
-                My password
-              </button>
-              <button
-                type="button"
-                className="k-btn k-btn-primary k-btn-sm"
-                onClick={() => setAdding(true)}
-              >
-                + User
-              </button>
-            </div>
+            {!readOnly && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="k-btn k-btn-outline k-btn-sm"
+                  onClick={() => setChangingPassword(true)}
+                >
+                  My password
+                </button>
+                <button
+                  type="button"
+                  className="k-btn k-btn-primary k-btn-sm"
+                  onClick={() => setAdding(true)}
+                >
+                  + User
+                </button>
+              </div>
+            )}
           </div>
 
           <QueryState
@@ -229,6 +235,7 @@ export function UsersTab() {
                     </span>
 
                     <span role="cell" className="text-right">
+                      {!readOnly && (
                       <Menu.Root>
                         <Menu.Trigger asChild>
                           <button
@@ -284,6 +291,7 @@ export function UsersTab() {
                           </Menu.Content>
                         </Menu.Portal>
                       </Menu.Root>
+                      )}
                     </span>
                   </div>
                 );
@@ -294,6 +302,7 @@ export function UsersTab() {
 
         {/* The freeze control. Below the table and visually quiet, because it
             is a cutover tool rather than a daily one. */}
+        {!readOnly && (
         <div className="k-callout mt-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -314,6 +323,7 @@ export function UsersTab() {
             </button>
           </div>
         </div>
+        )}
       </div>
 
       <div className="flex w-full flex-col gap-4 lg:w-[320px] lg:flex-none">

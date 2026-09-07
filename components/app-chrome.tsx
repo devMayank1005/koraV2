@@ -6,13 +6,13 @@ import { Sidebar, type SidebarUser } from "@/components/sidebar";
 import { RouteBreadcrumbs } from "@/components/breadcrumbs";
 import { useUi, useEffectiveRole } from "@/lib/store/ui";
 import { Providers } from "@/components/providers";
-import { SessionProvider } from "@/lib/query/permissions";
+import { SessionProvider, isReadOnlyBuild } from "@/lib/query/permissions";
 
 /**
  * Everything around a screen: sidebar, banners, mobile drawer.
  *
- * The two banners are `position: fixed` and stack, exactly as the old app's
- * did, because both must stay visible while scrolling — an offline banner you
+ * The banners live in a `position: sticky` rail and stack, because they must
+ * stay visible while scrolling — an offline banner you
  * can scroll past is worse than none, since it implies the app is fine.
  */
 export function AppChrome({
@@ -34,11 +34,30 @@ export function AppChrome({
   const previewing = user.role === "admin" && viewAsRole;
   const effectiveRole = useEffectiveRole(user.role);
 
-  const banners = (offline ? 1 : 0) + (previewing ? 1 : 0);
+  // Read-only parallel run. Not a permission and not a fault — the normal state
+  // of this app until the writer is flipped — so it is stated plainly and
+  // always, rather than discovered when a save is refused.
+  const readOnly = isReadOnlyBuild();
+
+  // No height constant and no padding: the rail is `position: sticky`, so it
+  // takes its own height in normal flow and still pins on scroll. The previous
+  // arrangement padded the shell by a hand-maintained number that was already
+  // wrong for the view-as banner.
 
   return (
     <SessionProvider value={user}>
       <Providers>
+      <div className="k-banner-rail">
+      {readOnly && (
+        <div className="k-banner-readonly">
+          <Eye size={14} strokeWidth={1.5} aria-hidden />
+          <span>
+            Read-only preview of the live data. Make changes in the current
+            Kora.
+          </span>
+        </div>
+      )}
+
       {previewing && (
         <div className="k-banner-viewas">
           <Eye size={14} strokeWidth={1.5} />
@@ -59,11 +78,9 @@ export function AppChrome({
           You are offline — changes cannot be saved right now
         </div>
       )}
+      </div>
 
-      <div
-        className="flex min-h-screen"
-        style={{ paddingTop: banners * 30 }}
-      >
+      <div className="flex min-h-screen">
         {/* Desktop sidebar */}
         <div className="hidden md:block">
           {/* No onSearch: the command palette is deferred, and a search button

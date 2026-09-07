@@ -956,28 +956,52 @@
     color: var(--k-ink-3);
   }
 
-  .k-banner-offline {
+  /* The banner rail. STICKY, not fixed.
+     A warning you can scroll away from is useless, so it has to stay put — but
+     `fixed` takes the rail out of flow, which means the shell has to be padded
+     by exactly its height, and that number then has to be maintained by hand in
+     two places. It was already wrong: `app-chrome` documented these as fixed
+     while nothing set the property and padded for them anyway, and a fixed 36px
+     under-counts the view-as banner, which is taller because it contains a
+     button.
+     `sticky` keeps the rail in flow, so it occupies its own height whatever
+     that turns out to be, and still pins to the top on scroll. No constant to
+     keep in step. */
+  .k-banner-rail {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+  }
+
+  .k-banner-offline,
+  .k-banner-viewas,
+  .k-banner-readonly {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 11px 16px;
-    background: var(--k-banner-risk);
-    color: #fff;
+    min-height: 36px;
+    padding: 8px 16px;
     font-size: 12.5px;
     font-weight: 600;
   }
 
+  .k-banner-offline {
+    background: var(--k-banner-risk);
+    color: #fff;
+  }
+
   .k-banner-viewas {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 11px 16px;
-    border: 1px solid var(--k-primary-18);
-    border-radius: var(--k-radius);
+    border-bottom: 1px solid var(--k-primary-18);
     background: var(--k-primary-06);
     color: var(--k-primary);
-    font-size: 12.5px;
-    font-weight: 600;
+  }
+
+  /* Read-only parallel run. Deliberately the calmest of the three: it is the
+     normal state of the app today, not a fault. */
+  .k-banner-readonly {
+    border-bottom: 1px solid var(--k-line);
+    background: var(--k-surface);
+    color: var(--k-ink-3);
   }
 
   /* Optimistic-concurrency 409 card. */
