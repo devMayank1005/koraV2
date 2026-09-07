@@ -5,10 +5,12 @@ import { Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { RagPill, QueryLevelPill } from "@/components/ui/status";
+import { ExportMenu } from "@/components/export-menu";
+import { toast } from "sonner";
 import { InlineSelect, InlineText } from "@/components/ui/inline";
 import { ArchiveButton } from "@/components/ui/archive-button";
 import { AddWorkLogDialog } from "@/components/create/work-log-dialog";
-import { useCanEdit } from "@/lib/query/permissions";
+import { useCanEdit, useSession } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import {
   AMS_QUERY_LEVELS,
@@ -50,6 +52,7 @@ export function AmsClientView({ clientId }: { clientId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const canEdit = useCanEdit();
+  const session = useSession();
   const [addingEntry, setAddingEntry] = useState(false);
 
   const totals = useMemo(
@@ -127,6 +130,45 @@ export function AmsClientView({ clientId }: { clientId: string }) {
                 >
                   All time
                 </button>
+              )}
+
+              {/* ADMIN ONLY, exactly as v1 gated it: the whole AMS export menu
+                  sat inside `can('admin')`, so an editor never saw one. These
+                  reports carry the hours a client is billed for. `useSession`
+                  is not a security boundary, but nothing here is server-side
+                  either — the generation is entirely client-side over data the
+                  person can already read on this screen. */}
+              {session?.role === "admin" && (
+                <div className="ml-auto">
+                  <ExportMenu
+                    items={[
+                      {
+                        label: "Activity Report (PDF)",
+                        disabledReason: totals?.log.length ? undefined : "no entries",
+                        run: async () => {
+                          const { exportAmsActivityPdf } = await import(
+                            "@/lib/export/ams-pdf"
+                          );
+                          await exportAmsActivityPdf(client, { from, to });
+                          toast.success("Report downloaded.");
+                        },
+                      },
+                      {
+                        label: "Excel (Work log)",
+                        disabledReason: (client.workLog ?? []).length
+                          ? undefined
+                          : "no entries",
+                        run: async () => {
+                          const { exportClientExcel } = await import(
+                            "@/lib/export/excel"
+                          );
+                          await exportClientExcel("ams", client);
+                          toast.success("Spreadsheet downloaded.");
+                        },
+                      },
+                    ]}
+                  />
+                </div>
               )}
             </div>
 

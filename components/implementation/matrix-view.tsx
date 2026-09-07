@@ -6,6 +6,8 @@ import { X, Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
+import { ExportMenu } from "@/components/export-menu";
+import { toast } from "sonner";
 import { InlineSelect, InlineText } from "@/components/ui/inline";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { AddModuleDialog } from "@/components/create/module-dialog";
@@ -89,6 +91,30 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
                     </span>
                   )}
                   {rag && <RagPill rag={rag} />}
+            <ExportMenu
+              items={[
+                {
+                  label: "Implementation Report (PDF)",
+                  disabledReason: modules.length ? undefined : "no modules",
+                  run: async () => {
+                    const { exportImplementationPdf } = await import(
+                      "@/lib/export/implementation-pdf"
+                    );
+                    await exportImplementationPdf(client);
+                    toast.success("Report downloaded.");
+                  },
+                },
+                {
+                  label: "Excel (Implementation)",
+                  disabledReason: modules.length ? undefined : "no modules",
+                  run: async () => {
+                    const { exportClientExcel } = await import("@/lib/export/excel");
+                    await exportClientExcel("impl", client);
+                    toast.success("Spreadsheet downloaded.");
+                  },
+                },
+              ]}
+            />
                   {canEditClient && (
                     <button
                       type="button"

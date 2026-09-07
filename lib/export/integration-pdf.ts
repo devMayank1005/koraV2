@@ -29,6 +29,8 @@ import {
   headerBar,
   thankYou,
   makeTextSafe,
+  updatesCellHeight,
+  paintUpdatesCell,
   TABLE_HEAD_STYLES,
 } from "./pdf-doc";
 import { exportFilename, downloadBlob, blobToBase64 } from "./download";
@@ -52,9 +54,6 @@ import type { Client, Integration, ActivityEntry } from "@/lib/domain/types";
  */
 
 const { w: W, h: H } = PAGE;
-
-/** Line height inside the custom-painted updates cell. */
-const UPD_LH = 3.3;
 
 /** Muted body greys, from the brand's ink/muted rather than v1's Tailwind greys. */
 const INK: Rgb = BRAND_RGB.ink;
@@ -360,44 +359,6 @@ export async function exportIntegrationPdf(
     };
   });
 
-  /**
-   * The exact height the custom cell painter will need.
-   *
-   * This MUST stay in lockstep with the painter below — they share `UPD_LH`
-   * for that reason. v1's Implementation report sizes the same cell by stuffing
-   * a fake string into it and letting autoTable measure, and its own comment
-   * records that the mismatch between guessed and drawn height was the actual
-   * cause of oversized gaps. Measuring what will really be drawn is the fix.
-   */
-  function updatesHeight(meta: DetailRow, maxW: number): number {
-    let h = 4;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    h += UPD_LH;
-
-    if (meta.updates.length) {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      for (const t of meta.updates) {
-        h += UPD_LH;
-        h += (doc.splitTextToSize(t.update ?? "", maxW) as string[]).length * UPD_LH + UPD_LH;
-      }
-    } else {
-      h += UPD_LH * 2;
-    }
-
-    h += UPD_LH;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    h +=
-      (doc.splitTextToSize(meta.nextText || "No next action noted.", maxW) as string[])
-        .length * UPD_LH;
-
-    // Caps one pathological row at about an extra page rather than letting a
-    // measurement error produce runaway blank pages.
-    return Math.min(h + 4, 180);
-  }
-
   autoTable(doc, {
     startY: 16,
     margin: { top: 16, left: 10, right: 10, bottom: 10 },
@@ -436,66 +397,14 @@ export async function exportIntegrationPdf(
       }
       if (d.column.index === 5) {
         d.cell.text = [""];
-        d.cell.styles.minCellHeight = updatesHeight(meta, d.cell.width - 6);
+        d.cell.styles.minCellHeight = updatesCellHeight(doc, meta, d.cell.width - 6);
       }
     },
     didDrawCell: (d: CellHookData) => {
       if (d.section !== "body" || d.column.index !== 5) return;
       const meta = detailRows[d.row.index];
       if (!meta) return;
-
-      // Repaint the background: autoTable has already drawn the (empty) cell,
-      // and the zebra stripe has to sit under what follows.
-      doc.setFillColor(...(d.row.index % 2 ? BRAND_RGB.white : ZEBRA_RGB));
-      doc.rect(d.cell.x, d.cell.y, d.cell.width, d.cell.height, "F");
-
-      const x = d.cell.x + 3;
-      const maxW = d.cell.width - 6;
-      let y = d.cell.y + 4;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.setTextColor(...INK);
-      doc.text(`Updates (${meta.updates.length}):`, x, y);
-      y += UPD_LH;
-
-      if (meta.updates.length) {
-        meta.updates.forEach((t, idx) => {
-          // The latest update stays dark; older ones step back to the muted
-          // grey. Nothing is dropped — full history is printed — but the entry
-          // that matters right now is not buried at equal weight.
-          const dateCol = idx === 0 ? INK : MUTED;
-          const bodyCol = idx === 0 ? MUTED : MUTED;
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(...dateCol);
-          doc.text(`(${fmtDate(t.date)})`, x, y);
-          y += UPD_LH;
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(...bodyCol);
-          const lines = doc.splitTextToSize(t.update ?? "", maxW) as string[];
-          doc.text(lines, x, y);
-          y += lines.length * UPD_LH + UPD_LH;
-        });
-      } else {
-        doc.setFont("helvetica", "italic");
-        doc.setTextColor(...MUTED);
-        doc.text("No updates yet.", x, y);
-        y += UPD_LH * 2;
-      }
-
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(...INK);
-      doc.text("Next:", x, y);
-      y += UPD_LH;
-      if (meta.nextText) {
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(...MUTED);
-        doc.text(doc.splitTextToSize(meta.nextText, maxW) as string[], x, y);
-      } else {
-        doc.setFont("helvetica", "italic");
-        doc.setTextColor(...MUTED);
-        doc.text("No next action noted.", x, y);
-      }
+      paintUpdatesCell(doc, meta, d.cell, d.row.index, INK, MUTED);
     },
     didDrawPage: () => {
       headerBar(doc, logo, "Appendix — Integration Detail", client.name, 12);

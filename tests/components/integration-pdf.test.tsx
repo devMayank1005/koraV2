@@ -241,3 +241,118 @@ describe("PDF text sanitising", () => {
     }
   });
 });
+
+/**
+ * The other two PDFs.
+ *
+ * Same structural bar as the Integration report: they run end to end on
+ * real-shaped data, produce a valid PDF, and survive the awkward inputs. Plus
+ * the two behaviours specific to each that would be silently wrong.
+ */
+describe("Implementation and AMS reports", () => {
+  let clients: Client[];
+
+  beforeAll(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FROZEN);
+    clients = makeClients(7, 40, FROZEN);
+    vi.useRealTimers();
+  });
+
+  it("the Implementation report generates and paginates", async () => {
+    const { exportImplementationPdf } = await import("@/lib/export/implementation-pdf");
+    const c = clients.find((x) => (x.modules ?? []).length > 1)!;
+    const r = await exportImplementationPdf(c, { returnBlob: true });
+    expect(await head(r!.blob)).toMatch(/^%PDF-/);
+    expect(r!.filename).toMatch(/_Implementation_Report_/);
+  });
+
+  it("the Implementation report lists ALL NINE phases even when data is missing", async () => {
+    const { exportImplementationPdf } = await import("@/lib/export/implementation-pdf");
+    const { PHASES } = await import("@/lib/domain/constants");
+
+    // One module carrying a single phase. The other eight must still appear as
+    // Not Started — a phase absent from the data means "not started", and
+    // dropping it would make the module look further along than it is.
+    const sparse: Client = {
+      ...clients[0],
+      modules: [
+        {
+          id: "m1",
+          name: "Sparse Module",
+          phases: [
+            {
+              name: PHASES[3],
+              status: "In Progress",
+              startDate: "", targetDate: "", assignee: "",
+              currentActivity: "", nextAction: "", updates: [],
+            },
+          ],
+        },
+      ],
+    } as unknown as Client;
+
+    const r = await exportImplementationPdf(sparse, { returnBlob: true });
+    const text = new TextDecoder("latin1").decode(await r!.blob.arrayBuffer());
+
+    // COUNT, do not just look for presence. Every phase name also appears once
+    // in the summary matrix's header row, so `text.includes(name)` is true even
+    // when the detail table lists only the phases that exist — which is exactly
+    // the regression this test is for, and the first version of it passed with
+    // that mutation in place. With one module: header once + detail once = 2.
+    const occurrences = (hay: string, needle: string) =>
+      hay.split(needle).length - 1;
+
+    for (const p of PHASES) {
+      const expected = p.replace(/[—–]/g, "-"); // the sanitiser maps em dashes
+      expect(
+        occurrences(text, expected),
+        `phase "${p}" should appear in BOTH the matrix header and the detail table`,
+      ).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("the AMS report honours the date window it is GIVEN", async () => {
+    // v1 read the window off module-level state belonging to the AMS screen, so
+    // the report silently depended on a filter set elsewhere. Passing it in is
+    // the fix, and this is the assertion that it is actually used.
+    const { exportAmsActivityPdf } = await import("@/lib/export/ams-pdf");
+    const c = clients.find((x) => (x.workLog ?? []).length > 3)!;
+
+    const all = await exportAmsActivityPdf(c, { from: "", to: "" }, { returnBlob: true });
+    const none = await exportAmsActivityPdf(
+      c,
+      { from: "1990-01-01", to: "1990-01-02" },
+      { returnBlob: true },
+    );
+
+    const allText = new TextDecoder("latin1").decode(await all!.blob.arrayBuffer());
+    const noneText = new TextDecoder("latin1").decode(await none!.blob.arrayBuffer());
+
+    expect(allText).toContain("All Time");
+    expect(noneText).toContain("01 Jan 1990");
+    // An empty window must produce a SMALLER document, not the same one.
+    expect(none!.blob.size).toBeLessThan(all!.blob.size);
+  });
+
+  it("the AMS report says so when it covers only a window", async () => {
+    // A period report is easy to mistake for a complete record once printed.
+    const { exportAmsActivityPdf } = await import("@/lib/export/ams-pdf");
+    const c = clients.find((x) => (x.workLog ?? []).length > 0)!;
+    const r = await exportAmsActivityPdf(
+      c, { from: "2026-08-01", to: "2026-08-31" }, { returnBlob: true },
+    );
+    const text = new TextDecoder("latin1").decode(await r!.blob.arrayBuffer());
+    expect(text).toContain("Entries outside this window are not shown");
+  });
+
+  it("neither report mutates the client it was handed", async () => {
+    // v1's portfolio export called .sort() on c.workLog directly. Generating a
+    // report must never reorder the data the screen is rendering from.
+    const { exportAmsActivityPdf } = await import("@/lib/export/ams-pdf");
+    const c = clients.find((x) => (x.workLog ?? []).length > 3)!;
+    const before = (c.workLog ?? []).map((e) => e.id);
+    await exportAmsActivityPdf(c, { from: "", to: "" }, { returnBlob: true });
+    expect((c.workLog ?? []).map((e) => e.id)).toEqual(before);
+  });
+});

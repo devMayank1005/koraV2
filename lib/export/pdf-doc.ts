@@ -1,5 +1,8 @@
 import type { jsPDF } from "jspdf";
-import { BRAND_RGB } from "./palette";
+import type { CellHookData } from "jspdf-autotable";
+import { BRAND_RGB, ZEBRA_RGB, type Rgb } from "./palette";
+import { fmtDate } from "@/lib/utils/dates";
+import type { ActivityEntry } from "@/lib/domain/types";
 
 /**
  * The parts every report PDF repeats.
@@ -299,3 +302,121 @@ export const TABLE_HEAD_STYLES = {
   fontStyle: "bold",
   fontSize: 9,
 } as const;
+
+/* ─────────────────────────────────── the "All Updates & Next" cell */
+
+/**
+ * Both the Integration and Implementation appendices end in one wide cell
+ * holding a phase or integration's entire update history plus its next action.
+ * It is custom-painted rather than left to autoTable because it mixes weights
+ * and colours within one cell, which a table cell cannot express.
+ *
+ * The height calculation and the painter MUST agree exactly, which is why they
+ * live together and share `UPD_LH`. v1's Implementation report sized this cell
+ * by stuffing a fake string into it and letting autoTable measure — and its own
+ * comment in the Integration report records that the mismatch between guessed
+ * and drawn height was the actual cause of the oversized gaps people reported.
+ * Measuring what will really be drawn is the fix, so both reports use it here.
+ */
+
+export const UPD_LH = 3.3;
+
+export interface UpdatesCell {
+  updates: ActivityEntry[];
+  nextText: string;
+}
+
+/** Exactly the height `paintUpdatesCell` will need. */
+export function updatesCellHeight(
+  doc: jsPDF,
+  meta: UpdatesCell,
+  maxW: number,
+): number {
+  let h = 4;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  h += UPD_LH;
+
+  if (meta.updates.length) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    for (const t of meta.updates) {
+      h += UPD_LH;
+      h += (doc.splitTextToSize(t.update ?? "", maxW) as string[]).length * UPD_LH + UPD_LH;
+    }
+  } else {
+    h += UPD_LH * 2;
+  }
+
+  h += UPD_LH;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  h +=
+    (doc.splitTextToSize(meta.nextText || "No next action noted.", maxW) as string[])
+      .length * UPD_LH;
+
+  // Caps one pathological row at about an extra page rather than letting a
+  // measurement error produce runaway blank pages.
+  return Math.min(h + 4, 180);
+}
+
+/**
+ * Draw it.
+ *
+ * `dimOlder` de-emphasises everything but the latest entry — nothing is
+ * dropped, the full history still prints, but the update that matters now is
+ * not buried at equal weight. v1 did this on the Integration report and not on
+ * the Implementation one; there is no reason for them to differ, so both do.
+ */
+export function paintUpdatesCell(
+  doc: jsPDF,
+  meta: UpdatesCell,
+  cell: CellHookData["cell"],
+  rowIndex: number,
+  ink: Rgb,
+  muted: Rgb,
+): void {
+  doc.setFillColor(...(rowIndex % 2 ? BRAND_RGB.white : ZEBRA_RGB));
+  doc.rect(cell.x, cell.y, cell.width, cell.height, "F");
+
+  const x = cell.x + 3;
+  const maxW = cell.width - 6;
+  let y = cell.y + 4;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...ink);
+  doc.text(`Updates (${meta.updates.length}):`, x, y);
+  y += UPD_LH;
+
+  if (meta.updates.length) {
+    meta.updates.forEach((t, idx) => {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...(idx === 0 ? ink : muted));
+      doc.text(`(${fmtDate(t.date)})`, x, y);
+      y += UPD_LH;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...muted);
+      const lines = doc.splitTextToSize(t.update ?? "", maxW) as string[];
+      doc.text(lines, x, y);
+      y += lines.length * UPD_LH + UPD_LH;
+    });
+  } else {
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(...muted);
+    doc.text("No updates yet.", x, y);
+    y += UPD_LH * 2;
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...ink);
+  doc.text("Next:", x, y);
+  y += UPD_LH;
+  doc.setFont("helvetica", meta.nextText ? "normal" : "italic");
+  doc.setTextColor(...muted);
+  doc.text(
+    doc.splitTextToSize(meta.nextText || "No next action noted.", maxW) as string[],
+    x,
+    y,
+  );
+}
