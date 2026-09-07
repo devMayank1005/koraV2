@@ -6,6 +6,8 @@ import { AlertTriangle, Clock, Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
+import { ExportMenu } from "@/components/export-menu";
+import { toast } from "sonner";
 import { InlineSelect } from "@/components/ui/inline";
 import { ArchiveButton } from "@/components/ui/archive-button";
 import { AddIntegrationDialog } from "@/components/create/integration-dialog";
@@ -78,6 +80,23 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                 {integRagLabel(client) && (
                   <RagPill rag={integRagLabel(client)!} />
                 )}
+                {/* Before the canEdit gate on purpose: v1 showed the export
+                    menu to every role on this screen, and a viewer being able
+                    to produce the client report is the point of the role. */}
+                <ExportMenu
+                  items={[
+                    {
+                      label: "Integration Report (PDF)",
+                      run: async () => {
+                        const { exportIntegrationPdf } = await import(
+                          "@/lib/export/integration-pdf"
+                        );
+                        await exportIntegrationPdf(client);
+                        toast.success("Report downloaded.");
+                      },
+                    },
+                  ]}
+                />
                 {canEdit && (
                   <button
                     type="button"

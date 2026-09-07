@@ -71,6 +71,20 @@ export interface LegacyApi {
   amsTotals(c: unknown, from: string, to: string): Record<string, unknown>;
   amsClientRag(c: unknown): string | null;
   milestoneUrgencyColor(ms: unknown): string;
+
+  /* ---- js/export.js — the report-only variants, see integration-report-helpers */
+  integSeverityRank(i: unknown): number;
+  sortIntegWorstFirst(list: unknown[]): unknown[];
+  integRiskReason(i: unknown): string;
+  integTopRisks(c: unknown, n?: number): unknown[];
+  integRagReason(c: unknown): { label: string; reason: string };
+  integMilestoneCounts(c: unknown): {
+    achieved: number;
+    pending: number;
+    missed: number;
+    total: number;
+  };
+  integStatusSegments(c: unknown): { status: string; count: number; hex: string }[];
 }
 
 /**
@@ -83,6 +97,7 @@ export function loadLegacy(): LegacyApi {
   const core = read("core.js");
   const impl = read("implementation.js");
   const ams = read("ams.js");
+  const exp = read("export.js");
 
   const parts = [
     // Constants the extracted functions close over.
@@ -91,6 +106,10 @@ export function loadLegacy(): LegacyApi {
     "const AMS_TYPES = ['Bug Fix','Enhancement','Config Change','Support Ticket','Reporting','Training','Meeting','Consultation'];",
     "const AMS_QUERY_LEVELS = ['L1 - Low','L2 - Medium','L3 - High','L4 - Critical'];",
     "const AMS_MODES = ['Online / Remote','Offline / In-person'];",
+    // v1's export palette. Transcribed from core.js:25 because it is a const,
+    // not a function. The PORT deliberately uses different colours (handoff
+    // \u00a713), so the golden test compares slice grouping and order, never hex.
+    "const SHEX = { 'Completed': '22c55e', 'In Progress': '0e7490', 'At Risk': 'be185d', 'On Hold \u2014 Internal': '7c3aed', 'On Hold \u2014 Client': '9333ea', 'Pending Client': 'd97706', 'Under Review': '0284c7', 'Delayed': 'ea580c', 'Cancelled': '94a3b8', 'Not Started': '64748b' };",
 
     extractFn(core, "todayStr"),
     extractFn(core, "daysDiff"),
@@ -112,9 +131,24 @@ export function loadLegacy(): LegacyApi {
     extractFn(ams, "amsTotals"),
     extractFn(ams, "amsClientRag"),
 
+    // js/export.js. These share five names with lib/domain/integrations.ts and
+    // do different things — which is exactly why they are worth diffing.
+    // INTEG_FALLBACK_RANK is a `const`, not a function, so extractFn cannot
+    // reach it; it is transcribed here from export.js:134.
+    "const INTEG_FALLBACK_RANK = { 'On Hold \u2014 Client': 2, 'On Hold \u2014 Internal': 3, 'Pending Client': 4, 'Under Review': 5, 'Delayed': 6, 'In Progress': 8, 'Not Started': 9, 'Completed': 10, 'Cancelled': 11 };",
+    extractFn(exp, "integSeverityRank"),
+    extractFn(exp, "sortIntegWorstFirst"),
+    extractFn(exp, "integRiskReason"),
+    extractFn(exp, "integTopRisks"),
+    extractFn(exp, "integRagReason"),
+    extractFn(exp, "integMilestoneCounts"),
+    extractFn(exp, "integStatusSegments"),
+
     // Surface them for the harness.
     `({ todayStr, daysDiff, isOverdue, isStale, integRagLabel, overallRagLabel,
-        implProgress, implAutoRag, amsTotals, amsClientRag, milestoneUrgencyColor })`,
+        implProgress, implAutoRag, amsTotals, amsClientRag, milestoneUrgencyColor,
+        integSeverityRank, sortIntegWorstFirst, integRiskReason, integTopRisks,
+        integRagReason, integMilestoneCounts, integStatusSegments })`,
   ];
 
   const context = vm.createContext({ Date, Math, Number, Object, JSON, isNaN });
