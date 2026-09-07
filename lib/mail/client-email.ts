@@ -19,7 +19,12 @@ export async function sendClientEmail(
   db: AnyDb,
   actor: SessionUser,
   input: z.infer<typeof clientEmailSend>,
-  ctx: { ip?: string | null; userAgent?: string | null; clientName?: string },
+  ctx: {
+    ip?: string | null;
+    userAgent?: string | null;
+    clientName?: string;
+    screen?: string | null;
+  },
 ): Promise<{ sent: true; to: string; cc: number }> {
   // Before the send, and not refunded afterwards.
   await consume(db, clientEmailLimits(actor.id));
@@ -50,6 +55,7 @@ export async function sendClientEmail(
     // The recipient is recorded; the message body deliberately is not.
     action: `Emailed report to ${input.to}${ctx.clientName ? ` (${ctx.clientName})` : ""}`,
     entity: "client_email",
+    screen: ctx.screen ?? null,
     ip: ctx.ip,
     userAgent: ctx.userAgent,
   });

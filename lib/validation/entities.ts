@@ -233,6 +233,17 @@ export const userUpdate = userCreate
  */
 export const clientEmailSend = z
   .object({
+    /**
+     * Which client this report is about. Optional, and the NAME is never taken
+     * from the caller — the route looks it up.
+     *
+     * v1 sent `clientName` as a string and wrote it straight into the audit
+     * row, so the record of an outbound email was labelled with whatever the
+     * browser said. Sending an id instead means the audit row names the client
+     * the server can verify, and a wrong id yields no label rather than a
+     * convincing wrong one.
+     */
+    clientId: z.string().max(64).optional(),
     to: z.email("Enter a valid email address").max(200),
     cc: z.array(z.email().max(200)).max(5, "At most 5 cc recipients").optional(),
     // CR/LF stripped because this reaches a mail header. Graph builds the

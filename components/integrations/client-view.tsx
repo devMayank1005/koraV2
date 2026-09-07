@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { InlineSelect } from "@/components/ui/inline";
 import { ArchiveButton } from "@/components/ui/archive-button";
 import { AddIntegrationDialog } from "@/components/create/integration-dialog";
+import { ClientEmailDialog } from "@/components/integrations/client-email-dialog";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import { STATUSES } from "@/lib/domain/constants";
@@ -40,6 +41,7 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   const canEdit = useCanEdit();
   const assignees = useAssigneeOptions();
   const [adding, setAdding] = useState(false);
+  const [emailing, setEmailing] = useState(false);
 
   const client = query.data;
 
@@ -95,6 +97,14 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                         toast.success("Report downloaded.");
                       },
                     },
+                    ...(canEdit
+                      ? [
+                          {
+                            label: "Email report to client…",
+                            run: () => setEmailing(true),
+                          },
+                        ]
+                      : []),
                     {
                       label: "Excel (Integrations)",
                       run: async () => {
@@ -133,6 +143,14 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                 )}
               </div>
             </header>
+
+            {emailing && (
+              <ClientEmailDialog
+                client={client}
+                open
+                onOpenChange={(o) => !o && setEmailing(false)}
+              />
+            )}
 
             <AddIntegrationDialog
               clientId={clientId}
