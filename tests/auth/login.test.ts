@@ -97,6 +97,11 @@ beforeAll(async () => {
     "0002_v2_schema.sql",
     "0003_domain_membership.sql",
     "0005_backend_indexes.sql",
+    // 0006 installs the `set_updated_at` trigger on `users`, which is what
+    // makes updated_at — and therefore the OCC token — move on a write. It was
+    // missing here, so anything in this file that asserts on updated_at was
+    // asserting against a schema production does not have.
+    "0006_updated_at_trigger.sql",
   ]) {
     await pg.exec(read(f));
   }
@@ -363,5 +368,78 @@ describe("session validation", () => {
     const session = await validateSession(db, res.token, NOW);
     expect(session.valid).toBe(false);
     if (!session.valid) expect(session.reason).toBe("user_not_found");
+  });
+});
+
+/**
+ * A clean sign-in must not write to the user row.
+ *
+ * Since migration 0006 a `set_updated_at` trigger fires on any UPDATE to
+ * `users`, and `updated_at` IS the OCC token the admin screen sends as
+ * If-Match. The login success path used to write the cleared-lockout state
+ * unconditionally, so every sign-in moved that token — and an admin with the
+ * users table open got a 409 "someone else changed this while you were
+ * editing" on a role change or a delete, describing a conflict that had never
+ * happened.
+ *
+ * Found by `pnpm verify:admin` against a real server, which reads a token,
+ * signs someone in, and then uses it. These lock the behaviour into CI.
+ */
+describe("a successful login writes only when something changed", () => {
+  beforeEach(seedUsers);
+
+  it("leaves updated_at alone when there was nothing to clear", async () => {
+    const before = await db
+      .select({ v: users.updatedAt })
+      .from(users)
+      .where(eq(users.id, "u_bcrypt"));
+
+    const res = await login("meera", "correct-horse");
+    expect(res.ok).toBe(true);
+
+    const after = await db
+      .select({ v: users.updatedAt })
+      .from(users)
+      .where(eq(users.id, "u_bcrypt"));
+
+    // The assertion that matters: an admin's If-Match token for this row is
+    // still valid after this person signed in.
+    expect(after[0].v).toEqual(before[0].v);
+  });
+
+  it("DOES write when there are failed attempts to clear", async () => {
+    // The counter must still be reset — skipping the write entirely would let
+    // failures accumulate across successful logins and lock out a user who has
+    // been signing in fine.
+    await login("meera", "wrong").catch(() => {});
+    const mid = await db
+      .select({ failed: users.failedAttempts })
+      .from(users)
+      .where(eq(users.id, "u_bcrypt"));
+    expect(mid[0].failed).toBe(1);
+
+    const res = await login("meera", "correct-horse");
+    expect(res.ok).toBe(true);
+
+    const after = await db
+      .select({ failed: users.failedAttempts, level: users.lockoutLevel })
+      .from(users)
+      .where(eq(users.id, "u_bcrypt"));
+    expect(after[0].failed).toBe(0);
+    expect(after[0].level).toBe(0);
+  });
+
+  it("still rehashes a legacy password even though nothing needed clearing", async () => {
+    // The two reasons to write are independent. A legacy user with a clean
+    // lockout state must NOT skip the upgrade — that is the only moment the
+    // plaintext is available.
+    const res = await login("vikram", "legacy-password");
+    expect(res.ok).toBe(true);
+
+    const after = await db
+      .select({ hash: users.passwordHash })
+      .from(users)
+      .where(eq(users.id, "u_legacy"));
+    expect(after[0].hash.startsWith("$2")).toBe(true);
   });
 });

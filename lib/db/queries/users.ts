@@ -1,6 +1,7 @@
-import { asc } from "drizzle-orm";
+import { asc, sql } from "drizzle-orm";
 import { vToken } from "@/lib/db/occ";
-import { users } from "@/lib/db/schema";
+import { qualify } from "@/lib/db/sql";
+import { users, auditLog } from "@/lib/db/schema";
 import type { AnyDb } from "@/lib/auth/db-types";
 
 /**
@@ -27,6 +28,18 @@ export interface UserAdminView extends UserOption {
   lockedUntil: string | null;
   failedAttempts: number;
   lockoutLevel: number;
+  /**
+   * Most recent audit row for this username, or null if they have never acted.
+   *
+   * There is no `last_login` column and adding one would mean a write on every
+   * sign-in. The audit log already records every login and every mutation, so
+   * it is the honest source — and it means "last active" covers acting, not
+   * just authenticating.
+   *
+   * Matched on `username` because that is what `audit_log` stores. Usernames
+   * are immutable (`userUpdate` omits the field), so the join cannot rot.
+   */
+  lastActive: string | null;
   _v: string | null;
 }
 
@@ -55,6 +68,9 @@ export async function listUsersForAdmin(db: AnyDb): Promise<UserAdminView[]> {
       lockedUntil: users.lockedUntil,
       failedAttempts: users.failedAttempts,
       lockoutLevel: users.lockoutLevel,
+      lastActive: sql<string | null>`(
+        select max(a.ts) from ${auditLog} a
+        where a.username = ${qualify(users.username)})`,
       _v: vToken(users.updatedAt),
     })
     .from(users)
@@ -70,6 +86,7 @@ export async function listUsersForAdmin(db: AnyDb): Promise<UserAdminView[]> {
     lockedUntil: r.lockedUntil,
     failedAttempts: r.failedAttempts,
     lockoutLevel: r.lockoutLevel,
+    lastActive: r.lastActive,
     _v: r._v,
   }));
 }

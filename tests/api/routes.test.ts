@@ -65,6 +65,7 @@ const { GET: getSnapshots, POST: postSnapshot } = await import(
 );
 const { POST: runDigestCron } = await import("@/app/api/cron/daily-digest/route");
 const { GET: getClients, POST: postClient } = await import("@/app/api/clients/route");
+const { GET: getBackups } = await import("@/app/api/backups/route");
 const { PATCH: patchClient, DELETE: deleteClient } = await import(
   "@/app/api/clients/[clientId]/route"
 );
@@ -652,5 +653,58 @@ describe("the SSO callback never returns a raw 500", () => {
       expect(SSO_ERRORS[code], `no message for ${code}`).toBeTruthy();
     }
     expect(ssoErrorMessage("msft_access_denied")).toBeTruthy();
+  });
+});
+
+/**
+ * Step 16's two new reads.
+ *
+ * Both are admin-gated, and both gates are the kind that is true by reading
+ * until something asserts it. `?archived=1` is the sharper one: it is a query
+ * parameter on a route every signed-in user may call, so the gate lives inside
+ * the handler rather than in `withAuth`, where a refactor could drop it without
+ * touching any role declaration.
+ */
+describe("admin reads added in step 16", () => {
+  it("GET /api/clients?archived=1 refuses a viewer and an editor", async () => {
+    for (const role of ["viewer", "editor"] as const) {
+      signInAs(role);
+      const res = await getClients(req("/api/clients?archived=1"));
+      expect(res.status, `${role} must not read archived clients`).toBe(403);
+    }
+  });
+
+  it("GET /api/clients?archived=1 returns the archived list for an admin", async () => {
+    signInAs("admin");
+    const res = await getClients(req("/api/clients?archived=1"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.clients)).toBe(true);
+  });
+
+  it("the archived flag does not leak into the ordinary list", async () => {
+    // The active list and the archived list are the same route with the filter
+    // inverted, so the risk is one bleeding into the other. An editor asking
+    // for the normal list must still get it.
+    signInAs("editor");
+    const res = await getClients(req("/api/clients"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.clients)).toBe(true);
+    // Every row in the ordinary list is an ACTIVE client, so none of them
+    // carries the archived-list shape.
+    for (const c of body.clients) expect(c).not.toHaveProperty("archivedAt");
+  });
+
+  it("GET /api/backups is admin-only", async () => {
+    signInAs("viewer");
+    expect((await getBackups(req("/api/backups"))).status).toBe(403);
+    signInAs("editor");
+    expect((await getBackups(req("/api/backups"))).status).toBe(403);
+  });
+
+  it("GET /api/backups is refused outright when signed out", async () => {
+    signInAs(null);
+    expect((await getBackups(req("/api/backups"))).status).toBe(401);
   });
 });

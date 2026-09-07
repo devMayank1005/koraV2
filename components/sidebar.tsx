@@ -92,7 +92,8 @@ export function Sidebar({
   user: SidebarUser;
   /** The role to render for — differs from user.role while previewing. */
   effectiveRole: string;
-  onSearch: () => void;
+  /** Absent while the command palette is deferred — see below. */
+  onSearch?: () => void;
   mobile?: boolean;
   onNavigate?: () => void;
 }) {
@@ -159,7 +160,11 @@ export function Sidebar({
         </span>
       </div>
 
-      {/* Search trigger. A button, not an input — it opens the palette. */}
+      {/* Search trigger. A button, not an input — it opens the palette.
+          Rendered ONLY when a handler is supplied: the palette is deferred, and
+          a control that does nothing the first time someone presses it is worse
+          than one that is not there. Passing onSearch brings it back. */}
+      {onSearch && (
       <div className={cn("pb-1", collapsed ? "px-2 pt-3" : "px-3 pt-3")}>
         <button
           type="button"
@@ -180,6 +185,7 @@ export function Sidebar({
           )}
         </button>
       </div>
+      )}
 
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2.5">
         {GROUPS.map((group, gi) => {

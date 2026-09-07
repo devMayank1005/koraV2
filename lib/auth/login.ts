@@ -172,16 +172,39 @@ export async function attemptLogin(
 
   // Success: clear both counters, and upgrade a legacy hash while we have the
   // plaintext in hand — the only moment it is available.
+  //
+  // ONLY WHEN SOMETHING WOULD ACTUALLY CHANGE. This used to run on every
+  // successful login, which was a wasted write for the overwhelmingly common
+  // case of someone signing in cleanly — and, since migration 0006, a harmful
+  // one: the `set_updated_at` trigger fires on any UPDATE, so `updated_at`
+  // moved on every sign-in, and `updated_at` is the OCC token.
+  //
+  // That made every user row's `_v` change whenever that person signed in
+  // anywhere. An admin with the users table open would then get a 409 —
+  // "someone else changed this while you were editing" — on a role change or a
+  // delete, naming a conflict that never happened. Caught by `verify:admin`,
+  // which drives a real login between reading a token and using it.
   const cleared = clearedState();
-  await db
-    .update(users)
-    .set({
-      failedAttempts: cleared.failed_attempts,
-      lockoutLevel: cleared.lockout_level,
-      lockedUntil: cleared.locked_until,
-      ...(needsRehash ? { passwordHash: await hashPassword(password) } : {}),
-    })
-    .where(eq(users.id, user.id));
+  const lockoutDirty =
+    (user.failedAttempts ?? 0) !== cleared.failed_attempts ||
+    (user.lockoutLevel ?? 0) !== cleared.lockout_level ||
+    user.lockedUntil !== cleared.locked_until;
+
+  if (lockoutDirty || needsRehash) {
+    await db
+      .update(users)
+      .set({
+        ...(lockoutDirty
+          ? {
+              failedAttempts: cleared.failed_attempts,
+              lockoutLevel: cleared.lockout_level,
+              lockedUntil: cleared.locked_until,
+            }
+          : {}),
+        ...(needsRehash ? { passwordHash: await hashPassword(password) } : {}),
+      })
+      .where(eq(users.id, user.id));
+  }
 
   const token = signToken(
     buildPayload(

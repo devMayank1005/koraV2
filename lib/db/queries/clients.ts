@@ -1,4 +1,4 @@
-import { eq, and, inArray, asc, sql, getTableColumns } from "drizzle-orm";
+import { eq, and, inArray, asc, desc, sql, getTableColumns } from "drizzle-orm";
 import {
   clients,
   integrations,
@@ -103,6 +103,53 @@ export async function listClients(db: AnyDb): Promise<ClientSummary[]> {
       phases: r.phaseCount,
       workLog: r.workLogCount,
     },
+  }));
+}
+
+export interface ArchivedClient {
+  id: string;
+  name: string;
+  archivedAt: string | null;
+  archivedBy: string | null;
+  /** Whether restoring would collide with a live client of the same name. */
+  nameTaken: boolean;
+}
+
+/**
+ * Archived clients, for the admin restore list.
+ *
+ * `POST /api/clients/[clientId]/restore` has existed since step 11 and has
+ * been unreachable from a browser the whole time, because nothing could tell
+ * you WHICH clients were archived — the only way to call it was to already
+ * know an id. Soft delete without a way back is just delete with extra steps.
+ *
+ * `nameTaken` is computed here rather than discovered on failure: migration
+ * 0004's unique index is on active rows only, so a name freed by archiving can
+ * be reused, and then the restore is refused. Surfacing that in the list means
+ * the button can be disabled with a reason instead of erroring on click.
+ */
+export async function listArchivedClients(db: AnyDb): Promise<ArchivedClient[]> {
+  const rows = await db
+    .select({
+      id: clients.id,
+      name: clients.name,
+      archivedAt: clients.archivedAt,
+      archivedBy: clients.archivedBy,
+      nameTaken: sql<boolean>`exists (
+        select 1 from ${clients} live
+        where live.archived = false
+          and lower(trim(live.name)) = lower(trim(${qualify(clients.name)})))`,
+    })
+    .from(clients)
+    .where(eq(clients.archived, true))
+    .orderBy(desc(clients.archivedAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    archivedAt: r.archivedAt,
+    archivedBy: r.archivedBy,
+    nameTaken: r.nameTaken,
   }));
 }
 

@@ -66,13 +66,11 @@ export function AppChrome({
       >
         {/* Desktop sidebar */}
         <div className="hidden md:block">
-          <Sidebar
-            user={user}
-            effectiveRole={effectiveRole}
-            onSearch={() => {
-              /* wired to the command palette in step 17 */
-            }}
-          />
+          {/* No onSearch: the command palette is deferred, and a search button
+              that does nothing on first press costs more confidence than a
+              missing one. The Sidebar hides the control when the prop is
+              absent — restore it in the same commit as the palette. */}
+          <Sidebar user={user} effectiveRole={effectiveRole} />
         </div>
 
         {/* Mobile drawer */}

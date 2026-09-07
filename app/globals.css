@@ -437,6 +437,20 @@
     color: var(--k-primary);
   }
 
+  /* Outlined in BRAND rather than in the field grey. The admin artboard uses
+     both in one row to rank two equal-weight actions without promoting either
+     to a filled button. */
+  .k-btn-outline-brand {
+    background: transparent;
+    color: var(--k-primary);
+    border: 1px solid var(--k-primary);
+    font-weight: 600;
+  }
+
+  .k-btn-outline-brand:not(:disabled):hover {
+    background: var(--k-primary-08);
+  }
+
   .k-btn-ghost {
     background: transparent;
     color: var(--k-mute);
@@ -772,6 +786,93 @@
 
   .dark .k-dot {
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
+  }
+
+  /* --- Menus -------------------------------------------------------------
+     Radix DropdownMenu items. The row menu on the admin users table is the
+     first menu in the app; @radix-ui/react-dropdown-menu was already a
+     dependency and unimported. Hand-rolling one means re-implementing focus
+     trapping, typeahead and dismissal, which is how menus end up unusable
+     from a keyboard. */
+  .k-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 7px 10px;
+    border-radius: var(--k-radius-chip);
+    font-size: 12.5px;
+    color: var(--k-ink);
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+  }
+
+  .k-menu-item[data-highlighted] {
+    background: var(--k-surface);
+  }
+
+  .k-menu-item[data-disabled] {
+    color: var(--k-mute-2);
+    cursor: default;
+  }
+
+  /* Danger sits last and below a divider — v1's adminRowMenu rule, kept. */
+  .k-menu-item-danger {
+    color: var(--k-text-red);
+  }
+
+  .k-menu-item-danger[data-highlighted] {
+    background: var(--k-tint-risk);
+  }
+
+  /* --- Tabs --------------------------------------------------------------
+     The underline tab bar from the admin artboard. The only primitive that
+     screen needed which did not already exist. Active is weight + colour +
+     a 2px rule, never a filled pill — the handoff uses filled pills for
+     FILTER chips (.k-chip), and reusing them here would make a tab strip
+     read as a filter row. */
+  .k-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--k-line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .k-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .k-tab {
+    padding: 9px 14px;
+    font-size: 13px;
+    color: var(--k-mute);
+    white-space: nowrap;
+    background: none;
+    border: 0;
+    /* Sits ON the container's 1px rule, so the active tab's 2px rule covers
+       it rather than stacking under it. */
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    transition:
+      color var(--k-t-fast),
+      border-color var(--k-t-fast);
+  }
+
+  .k-tab:hover {
+    color: var(--k-ink);
+  }
+
+  .k-tab[aria-selected="true"] {
+    font-weight: 600;
+    color: var(--k-primary);
+    border-bottom-color: var(--k-primary);
+  }
+
+  .k-tab:focus-visible {
+    outline: 2px solid var(--k-primary);
+    outline-offset: -2px;
+    border-radius: var(--k-radius-chip) var(--k-radius-chip) 0 0;
   }
 
   /* --- Tables ------------------------------------------------------------ */

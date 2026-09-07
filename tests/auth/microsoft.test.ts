@@ -38,6 +38,9 @@ beforeAll(async () => {
   for (const f of [
     "0001_baseline_v1_schema.sql", "0002_v2_schema.sql",
     "0003_domain_membership.sql", "0005_backend_indexes.sql",
+    // Production has this trigger; a test schema without it silently makes
+    // updated_at (and therefore every OCC token) hold still.
+    "0006_updated_at_trigger.sql",
   ]) {
     await pg.exec(readSql(f));
   }
