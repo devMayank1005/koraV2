@@ -33,6 +33,19 @@ export const PHASES = [
 
 export type PhaseName = (typeof PHASES)[number];
 
+/**
+ * Display-only shortening for the one phase name that does not fit a column.
+ *
+ * The FULL name stays in the data, in tooltips and in the URL — it is the
+ * routing key, and the catch-all segment that carries its embedded slash
+ * depends on it (README §7). Only the visible label changes.
+ */
+const SHORT_PHASE: Record<string, string> = {
+  "Data Migration / Production Migration": "Data Migration",
+};
+
+export const shortPhase = (name: string): string => SHORT_PHASE[name] ?? name;
+
 /** Completing one of these requires an update carrying an attachment. */
 export const SIGNOFF_PHASES: readonly string[] = [
   "BPU Signoff",

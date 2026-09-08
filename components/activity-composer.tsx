@@ -91,9 +91,12 @@ export function ActivityComposer({
   const canPost = text.trim().length > 0 && !busy;
 
   return (
-    <div className="rounded-[4px] border border-k-line bg-k-surface p-2.5">
+    // 1d draws ONE bordered box, not a field inside a tinted tray. The border
+    // and the focus ring move to the container so the textarea can sit flush
+    // inside it without the composer reading as two nested controls.
+    <div className="rounded-[4px] border border-k-line bg-k-paper p-2.5 transition-shadow focus-within:border-k-primary focus-within:shadow-[var(--k-focus-ring)]">
       <textarea
-        className="k-textarea !min-h-[64px] !bg-k-paper"
+        className="k-textarea !min-h-[64px] !border-0 !bg-transparent !px-0 focus:!shadow-none"
         rows={2}
         placeholder="Add an update…"
         aria-label="Update"
@@ -154,19 +157,24 @@ export function ActivityComposer({
             )}
             {uploading ? "Uploading…" : "Attach"}
           </label>
-          <span className="k-mono text-[10.5px] text-k-mute">
-            ⌘↵ to post · PDF, Excel, image or email, max 3MB
-          </span>
         </div>
 
-        <button
-          type="button"
-          className="k-btn k-btn-primary k-btn-sm"
-          disabled={!canPost}
-          onClick={() => post.mutate()}
-        >
-          {post.isPending ? "Posting…" : "Post"}
-        </button>
+        <div className="flex min-w-0 items-center gap-2.5">
+          {/* 1d writes "⌘S to save" here. ⌘S is the browser's Save Page, and
+              swallowing it in a textarea is hostile; ⌘↵ is what this app has
+              always used to post and what the shortcut handler above binds. */}
+          <span className="k-mono truncate text-[10.5px] text-k-mute">
+            ⌘↵ to post · PDF, Excel, image or email, max 3MB
+          </span>
+          <button
+            type="button"
+            className="k-btn k-btn-primary k-btn-sm"
+            disabled={!canPost}
+            onClick={() => post.mutate()}
+          >
+            {post.isPending ? "Posting…" : "Post"}
+          </button>
+        </div>
       </div>
     </div>
   );

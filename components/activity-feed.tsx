@@ -28,16 +28,29 @@ export function ActivityFeed({
   variant = "full",
   limit,
   emptyHint,
+  dotColor,
   /** Supply all three to make the feed writable. Omit for a read-only view. */
   parentKind,
   parentId,
   clientId,
 }: {
   entries: ActivityEntry[];
-  /** `full` for a detail pane, `compact` for a side panel, `inline` for tiles. */
-  variant?: "full" | "compact" | "inline";
+  /**
+   * `full` for a detail pane, `compact` for a side panel, `inline` for tiles,
+   * `timeline` for artboard 1d's threaded rail.
+   */
+  variant?: "full" | "compact" | "inline" | "timeline";
   limit?: number;
   emptyHint?: string;
+  /**
+   * `timeline` only: the colour of the dots.
+   *
+   * An ActivityEntry has no status of its own — 1d colours the dot "in the
+   * status fill", which can only mean the PARENT's. Passed in rather than
+   * derived here, because this component serves integrations and phases and
+   * must not know how either computes its status.
+   */
+  dotColor?: string;
   parentKind?: "integration" | "phase";
   parentId?: string;
   clientId?: string;
@@ -70,17 +83,32 @@ export function ActivityFeed({
     );
   }
 
-  const compact = variant !== "full";
+  const timeline = variant === "timeline";
+  const compact = variant === "compact" || variant === "inline";
 
   return (
     <>
       {composer}
-      <ol className={compact ? "space-y-2.5" : "space-y-3.5"}>
-        {shown.map((e) => (
-          <li key={e.id} className="flex gap-2.5">
-            <Avatar name={e.addedBy} size={compact ? 22 : 26} />
+      {/* The timeline's own spacing is the padding under each entry, not a gap
+          between them — a gap would cut the connector into dashes. */}
+      <ol className={timeline ? undefined : compact ? "space-y-2.5" : "space-y-3.5"}>
+        {shown.map((e, i) => (
+          <li key={e.id} className={`flex ${timeline ? "gap-3" : "gap-2.5"}`}>
+            {timeline ? (
+              <div className="flex w-4 flex-none flex-col items-center" aria-hidden>
+                <span
+                  className="mt-[5px] h-[9px] w-[9px] flex-none rounded-full"
+                  style={{ background: dotColor ?? "var(--k-mute-2)" }}
+                />
+                {/* No tail after the last dot: a line running into empty space
+                    reads as a truncated list. */}
+                {i < shown.length - 1 && <span className="w-px flex-1 bg-k-line" />}
+              </div>
+            ) : (
+              <Avatar name={e.addedBy} size={compact ? 22 : 26} />
+            )}
 
-            <div className="min-w-0 flex-1">
+            <div className={`min-w-0 flex-1 ${timeline ? "pb-4" : ""}`}>
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <span
                   className={`font-semibold text-k-ink ${compact ? "text-[12px]" : "text-[12.5px]"}`}
@@ -109,9 +137,9 @@ export function ActivityFeed({
                   set as HTML: this is the one field in the app that carries
                   arbitrary user input into a shared view. */}
               <p
-                className={`mt-0.5 whitespace-pre-wrap break-words text-k-ink ${
+                className={`mt-0.5 whitespace-pre-wrap break-words ${
                   compact ? "text-[12px]" : "text-[12.5px]"
-                }`}
+                } ${timeline ? "leading-[1.6] text-k-ink-3" : "text-k-ink"}`}
               >
                 {e.update}
               </p>
@@ -241,7 +269,8 @@ function countReactions(reactions: string[]): [string, number][] {
   return [...m.entries()];
 }
 
-function fmtBytes(n: number): string {
+/** Shared with the 1d Attachments card, so one file never reads two sizes. */
+export function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;

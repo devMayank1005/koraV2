@@ -1,22 +1,25 @@
 "use client";
 
+import { useRef, type RefObject } from "react";
 import Link from "next/link";
 import { ChevronLeft, Lock, Check } from "lucide-react";
+import { toast } from "sonner";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill } from "@/components/ui/status";
 import { InlineSelect, InlineText } from "@/components/ui/inline";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
+import { useUpdateEntity } from "@/lib/query/mutations";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
   PHASES,
   STATUSES,
-  STATUS_COLORS,
   SIGNOFF_PHASES,
+  shortPhase,
 } from "@/lib/domain/constants";
-import { canCompletePhase } from "@/lib/domain/implementation";
+import { canCompletePhase, phaseSignedOff } from "@/lib/domain/implementation";
 import { fmtDate } from "@/lib/utils/dates";
-import type { Phase, Status } from "@/lib/domain/types";
+import type { Phase } from "@/lib/domain/types";
 
 /**
  * Phase detail (artboard 1f): `1fr 250px`, with the nine-step track across the
@@ -43,6 +46,11 @@ export function PhaseDetailView({
   const phase = mod?.phases?.find((p) => p.name === phaseName);
   const canEdit = useCanEdit();
   const assignees = useAssigneeOptions(phase?.assignee);
+  // 1f's Actions card does not open anything new — "Log an update" and
+  // "Reassign" send you to the controls already on this page. Refs rather than
+  // ids so two phase pages could never collide.
+  const updatesRef = useRef<HTMLDivElement>(null);
+  const assigneeRef = useRef<HTMLDivElement>(null);
   const target = phase
     ? {
         kind: "phase" as const,
@@ -76,35 +84,66 @@ export function PhaseDetailView({
               {client?.name ?? "Back"} · {mod.name}
             </Link>
 
-            <header className="flex flex-wrap items-start justify-between gap-3">
-              <h1 className="k-page-title min-w-0">{phaseName}</h1>
-              {phase &&
-                (canEdit && target ? (
-                  <div className="w-[200px]">
-                    <InlineSelect
-                      target={target}
-                      field="status"
-                      label={`Status for ${phaseName}`}
-                      value={phase.status}
-                      options={STATUSES}
-                      version={phase._v}
-                      before={phase}
-                      optionDisabled={(o) =>
-                        o === "Completed" && !canCompletePhase(phase).ok
-                      }
-                    />
-                  </div>
-                ) : (
-                  <StatusPill status={phase.status} />
-                ))}
-            </header>
+            {/* 1f puts the title, the meta line and the whole nine-step track
+                inside one card, so the sequence reads as part of the header
+                rather than as a stray strip under it. */}
+            <section className="k-card overflow-hidden">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-k-line-2 px-5 py-4">
+                <div className="min-w-0">
+                  <h1 className="text-[20px] font-bold leading-tight text-k-primary">
+                    {phaseName} <span className="text-k-mute-2">—</span> {mod.name}
+                  </h1>
+                  <p className="mt-1.5 text-[12px] text-k-mute">
+                    Phase {PHASES.indexOf(phaseName as (typeof PHASES)[number]) + 1} of{" "}
+                    {PHASES.length}
+                    {phase?.assignee && (
+                      <>
+                        {" "}
+                        · Owner{" "}
+                        <span className="font-semibold text-k-ink">
+                          {phase.assignee}
+                        </span>
+                      </>
+                    )}
+                    {phase?.targetDate && (
+                      <>
+                        {" "}
+                        · Target{" "}
+                        <span className="k-mono text-[11px] text-k-text-amber">
+                          {fmtDate(phase.targetDate)}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                </div>
+                {phase &&
+                  (canEdit && target ? (
+                    <div className="w-[200px]">
+                      <InlineSelect
+                        target={target}
+                        field="status"
+                        label={`Status for ${phaseName}`}
+                        value={phase.status}
+                        options={STATUSES}
+                        version={phase._v}
+                        before={phase}
+                        optionDisabled={(o) =>
+                          o === "Completed" && !canCompletePhase(phase).ok
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <StatusPill status={phase.status} />
+                  ))}
+              </div>
 
-            <PhaseTrack
-              clientId={clientId}
-              moduleId={moduleId}
-              current={phaseName}
-              phases={mod.phases ?? []}
-            />
+              <PhaseTrack
+                clientId={clientId}
+                moduleId={moduleId}
+                current={phaseName}
+                phases={mod.phases ?? []}
+              />
+            </section>
 
             {!phase ? (
               <div className="mt-6">
@@ -116,9 +155,13 @@ export function PhaseDetailView({
             ) : (
               <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_250px]">
                 <div className="min-w-0 space-y-5">
-                  <SignoffNotice phase={phase} />
+                  <section className="k-card px-5 py-4">
+                    <h2 className="k-eyebrow">Sign-off checklist</h2>
+                    <Checklist phase={phase} />
+                    <SignoffNotice phase={phase} />
+                  </section>
 
-                  <section className="k-card p-4">
+                  <section className="k-card p-4" ref={updatesRef}>
                     <div className="k-card-head">
                       <h2 className="k-card-title">Updates</h2>
                       <span className="k-mono text-[11px] text-k-mute">
@@ -137,25 +180,27 @@ export function PhaseDetailView({
                 </div>
 
                 <aside className="space-y-5">
-                  <section className="k-card p-4">
-                    <h2 className="k-card-title">Detail</h2>
-                    <dl className="mt-3 space-y-2.5">
-                      <F label="Assignee">
-                        {canEdit && target ? (
-                          <InlineSelect
-                            target={target}
-                            field="assignee"
-                            label="Assignee"
-                            value={phase.assignee ?? ""}
-                            options={assignees}
-                            version={phase._v}
-                            before={phase}
-                            emptyLabel="Unassigned"
-                            unknownSuffix="(not a current user)"
-                          />
-                        ) : (
-                          phase.assignee || <Dash />
-                        )}
+                  <section className="k-card px-4 py-3.5">
+                    <h2 className="k-eyebrow">Phase record</h2>
+                    <dl className="mt-2">
+                      <F label="Owner">
+                        <div ref={assigneeRef}>
+                          {canEdit && target ? (
+                            <InlineSelect
+                              target={target}
+                              field="assignee"
+                              label="Assignee"
+                              value={phase.assignee ?? ""}
+                              options={assignees}
+                              version={phase._v}
+                              before={phase}
+                              emptyLabel="Unassigned"
+                              unknownSuffix="(not a current user)"
+                            />
+                          ) : (
+                            phase.assignee || <Dash />
+                          )}
+                        </div>
                       </F>
                       <F label="Start">
                         {canEdit && target ? (
@@ -227,6 +272,14 @@ export function PhaseDetailView({
                       </F>
                     </dl>
                   </section>
+
+                  <Actions
+                    clientId={clientId}
+                    phase={phase}
+                    canEdit={canEdit}
+                    onLogUpdate={() => focusWithin(updatesRef, "textarea")}
+                    onReassign={() => focusWithin(assigneeRef, "select")}
+                  />
                 </aside>
               </div>
             )}
@@ -256,45 +309,52 @@ function PhaseTrack({
   phases: Phase[];
 }) {
   const byName = new Map(phases.map((p) => [p.name, p] as const));
+  const currentIndex = PHASES.indexOf(current as (typeof PHASES)[number]);
 
   return (
-    <nav aria-label="Phase sequence" className="mt-4 overflow-x-auto">
+    <nav aria-label="Phase sequence" className="overflow-x-auto px-5 py-4">
       <ol className="flex min-w-[820px] items-stretch gap-1">
         {PHASES.map((name, i) => {
           const p = byName.get(name);
-          const status = (p?.status ?? "Not Started") as Status;
-          const c = STATUS_COLORS[status] ?? STATUS_COLORS["Not Started"];
           const isCurrent = name === current;
-          const done = status === "Completed";
+          const done = p?.status === "Completed";
+
+          // 1f's track states POSITION IN THE SEQUENCE, not status: done behind
+          // you, amber where you are, flat line ahead. The matrix is where each
+          // phase's own status lives, and colouring the future steps by status
+          // here made the two screens compete to answer the same question.
+          const bar = done
+            ? "var(--k-fill-ok)"
+            : isCurrent
+              ? "var(--k-fill-warn)"
+              : "var(--k-line)";
 
           return (
             <li key={name} className="min-w-0 flex-1">
               <Link
                 href={`/implementation/${clientId}/${moduleId}/${encodeURIComponent(name)}`}
                 aria-current={isCurrent ? "step" : undefined}
-                title={`${name} — ${p ? status : "not present"}`}
-                className={`block rounded-[4px] px-1.5 py-1.5 transition-colors ${
-                  isCurrent ? "bg-k-primary/[.10]" : "hover:bg-k-surface"
-                }`}
+                title={`${name} — ${p ? p.status : "not present"}`}
+                className="block rounded-[4px] px-1 py-1 transition-colors hover:bg-k-surface"
               >
                 <span
                   aria-hidden
                   className="block rounded-[2px]"
-                  style={{ height: 4, background: p ? c.fill : "var(--k-line-2)" }}
+                  style={{ height: 4, background: bar }}
                 />
                 <span
-                  className={`mt-1.5 flex items-start gap-1 text-[10px] leading-tight ${
+                  className={`mt-1.5 flex items-start justify-center gap-1 text-center text-[9px] leading-[1.2] ${
                     isCurrent
-                      ? "font-semibold text-k-primary"
-                      : "text-k-mute"
+                      ? "font-bold text-k-text-amber"
+                      : i < currentIndex
+                        ? "text-k-mute"
+                        : "text-k-mute-2"
                   }`}
                 >
                   {done && (
                     <Check size={9} strokeWidth={2} aria-hidden className="mt-px shrink-0" />
                   )}
-                  <span className="min-w-0">
-                    {i + 1}. {name}
-                  </span>
+                  <span className="min-w-0">{shortPhase(name)}</span>
                 </span>
               </Link>
             </li>
@@ -306,52 +366,229 @@ function PhaseTrack({
 }
 
 /**
- * The signoff gate, stated before anyone tries to complete the phase.
+ * The sign-off checklist (artboard 1f).
+ *
+ * THESE BOXES ARE INDICATORS, NOT CONTROLS. Every item is derived from data
+ * that already exists, so there is nothing to store and nothing to click — they
+ * are `aria-hidden` spans with the state carried in the text beside them. That
+ * is deliberately the opposite of the milestone checkbox on the integration
+ * screen, which really does write: a clickable box here would suggest you could
+ * sign a phase off by ticking it, when the only thing that signs a phase off is
+ * an attached document.
+ */
+function Checklist({ phase }: { phase: Phase }) {
+  const updates = phase.updates ?? [];
+  const evidence = updates.find((u) => u.attachment?.storagePath);
+
+  const items: { label: string; done: boolean; meta?: string }[] = [
+    {
+      label: "Owner assigned",
+      done: Boolean(phase.assignee),
+      meta: phase.assignee ?? "Nobody is named on this phase",
+    },
+    {
+      label: "Target date set",
+      done: Boolean(phase.targetDate),
+      meta: phase.targetDate ? fmtDate(phase.targetDate) : "No date committed",
+    },
+    {
+      label: "Progress logged",
+      done: updates.length > 0,
+      meta: updates.length
+        ? `${updates.length} update${updates.length === 1 ? "" : "s"}`
+        : "Nothing recorded yet",
+    },
+    {
+      label: "Signed document attached",
+      done: Boolean(evidence),
+      meta: evidence
+        ? `${evidence.attachment!.fileName} · ${fmtDate(evidence.date)}`
+        : SIGNOFF_PHASES.includes(phase.name)
+          ? "Required before this phase can be completed"
+          : "Not required for this phase",
+    },
+    {
+      label: "Phase completed",
+      done: phase.status === "Completed",
+      meta: phase.status,
+    },
+  ];
+
+  return (
+    <ul className="mt-3">
+      {items.map((it) => (
+        <li
+          key={it.label}
+          className="flex items-start gap-2.5 border-b border-k-line-2 py-2.5 last:border-b-0"
+        >
+          <span
+            className="k-check mt-px"
+            data-checked={it.done ? "true" : "false"}
+            aria-hidden
+          >
+            {it.done && <Check size={11} strokeWidth={2.5} />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[12.5px] font-medium text-k-ink">
+              {it.label}
+              <span className="sr-only">{it.done ? " — done" : " — not done"}</span>
+            </p>
+            {it.meta && (
+              <p className="mt-0.5 text-[10.5px] text-k-mute-2">{it.meta}</p>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The gate, stated before anyone tries to complete the phase.
  *
  * BPU/CRP/UAT Signoff cannot be completed without a document attached to an
  * update. That rule lived only in js/events.js in the old app, which meant it
  * was advisory — any direct API call could complete a signoff phase with
  * nothing attached. It is enforced server-side now, and shown here from the
  * same domain function, so the screen and the server cannot disagree.
+ *
+ * It used to return null on the six ordinary phases, which left `canCompletePhase`'s
+ * `warn` branch computed and rendered nowhere. Now every phase says what, if
+ * anything, stands between it and the next one.
  */
 function SignoffNotice({ phase }: { phase: Phase }) {
-  if (!SIGNOFF_PHASES.includes(phase.name)) return null;
-
   const gate = canCompletePhase({ ...phase, status: "Completed" } as Phase);
-  const satisfied = gate.ok;
+  const gated = !gate.ok;
+  const isSignoff = SIGNOFF_PHASES.includes(phase.name);
+  const next = PHASES[PHASES.indexOf(phase.name as (typeof PHASES)[number]) + 1];
+
+  const body = gated
+    ? `${gate.reason}${next ? ` ${next} stays blocked until it is.` : ""}`
+    : isSignoff
+      ? "Signed document attached — this phase can be completed."
+      : phase.status === "Completed"
+        ? "This phase is complete. Nothing gates the next one."
+        : gate.warn ??
+          (next ? `Nothing gates ${next} but this phase finishing.` : "");
+
+  if (!body) return null;
 
   return (
     <div
-      className="k-callout flex items-start gap-2.5"
+      className="k-callout mt-4 flex items-start gap-2.5"
       style={
-        satisfied
+        !gated && (isSignoff || phase.status === "Completed")
           ? { background: "var(--k-tint-green)", borderColor: "transparent" }
           : undefined
       }
     >
-      {satisfied ? (
-        <Check size={15} strokeWidth={1.5} className="mt-px shrink-0 text-k-text-green" />
-      ) : (
+      {gated ? (
         <Lock size={15} strokeWidth={1.5} className="mt-px shrink-0 text-k-text-amber" />
+      ) : (
+        <Check size={15} strokeWidth={1.5} className="mt-px shrink-0 text-k-text-green" />
       )}
-      <p className="text-[12px] text-k-ink-3">
-        {satisfied
-          ? "Signed document attached — this phase can be completed."
-          : "This is a sign-off phase. It cannot be marked Completed until an update carries the signed document."}
-      </p>
+      <p className="text-[12px] text-k-ink-3">{body}</p>
     </div>
+  );
+}
+
+/**
+ * 1f's Actions card.
+ *
+ * "Mark signed off" is the only new write: a PATCH of `status: "Completed"`.
+ * It is disabled with the gate's own reason rather than hidden, because a
+ * button that vanishes teaches nothing — and the server runs the identical
+ * check, so a client that ignored this would still be refused.
+ */
+function Actions({
+  clientId,
+  phase,
+  canEdit,
+  onLogUpdate,
+  onReassign,
+}: {
+  clientId: string;
+  phase: Phase;
+  canEdit: boolean;
+  onLogUpdate: () => void;
+  onReassign: () => void;
+}) {
+  const update = useUpdateEntity("phase", clientId, phase.id, {
+    path: `/api/phases/${encodeURIComponent(phase.id)}`,
+    screen: "implementation",
+    onFailure: () => toast.error("Could not complete that phase."),
+  });
+
+  if (!canEdit) return null;
+
+  const gate = canCompletePhase({ ...phase, status: "Completed" } as Phase);
+  const done = phaseSignedOff(phase);
+  // `_v` is optional on the DTO; without it the PATCH is refused with a 428.
+  const blocked = !gate.ok || !phase._v;
+  const reason = !gate.ok
+    ? gate.reason
+    : !phase._v
+      ? "This phase has no version token, so it cannot be saved."
+      : undefined;
+
+  return (
+    <section className="k-card px-4 py-3.5">
+      <h2 className="k-eyebrow">Actions</h2>
+      <div className="mt-3 flex flex-col gap-2">
+        {!done && (
+          <button
+            type="button"
+            className="k-btn k-btn-primary !h-[34px] justify-center"
+            disabled={blocked || update.isPending}
+            title={reason}
+            onClick={() =>
+              update.mutate(
+                { version: phase._v!, patch: { status: "Completed" } },
+                { onSuccess: () => toast.success("Phase marked signed off.") },
+              )
+            }
+          >
+            {update.isPending ? "Saving…" : "Mark signed off"}
+          </button>
+        )}
+        <button
+          type="button"
+          className="k-btn k-btn-outline !h-[34px] justify-center"
+          onClick={onLogUpdate}
+        >
+          Log an update
+        </button>
+        <button
+          type="button"
+          className="k-btn k-btn-outline !h-[34px] justify-center"
+          onClick={onReassign}
+        >
+          Reassign
+        </button>
+      </div>
+      {blocked && !done && reason && (
+        <p className="mt-2 text-[11px] text-k-text-amber">{reason}</p>
+      )}
+    </section>
   );
 }
 
 function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <dt className="k-eyebrow">{label}</dt>
-      <dd className="mt-0.5 whitespace-pre-wrap text-[12px] text-k-ink-3">
+    <div className="flex items-center justify-between gap-3 border-b border-k-line-2 py-2 last:border-b-0">
+      <dt className="shrink-0 text-[11.5px] text-k-mute">{label}</dt>
+      <dd className="min-w-0 whitespace-pre-wrap text-right text-[12px] font-semibold text-k-ink">
         {children}
       </dd>
     </div>
   );
+}
+
+/** Scroll a control into view and put the cursor in it. */
+function focusWithin(ref: RefObject<HTMLDivElement | null>, selector: string) {
+  const el = ref.current?.querySelector<HTMLElement>(selector);
+  ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  el?.focus();
 }
 
 function Dash() {
