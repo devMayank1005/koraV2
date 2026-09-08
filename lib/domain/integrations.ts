@@ -36,25 +36,60 @@ export function isStale(i: Integration, days = 7, now?: Date): boolean {
 }
 
 /**
- * Per-client Integration RAG.
- * Red if anything is At Risk or overdue; Amber if anything is stale but not
- * overdue; otherwise Green. Null when the client has no integrations at all,
- * which the scorecard renders as "stream not tracked".
+ * A client's integration health, reduced to four numbers.
+ *
+ * THE POINT OF THIS SHAPE: the client rail (artboard 1c) needs a RAG dot and a
+ * status bar for all 22 clients at once, and it only ever holds `ClientSummary`
+ * — no `integrations[]` to count. Rather than let the rail invent a second,
+ * subtly different rule, the rule is stated once against these four numbers,
+ * and both callers produce them: the tree-shaped screens by counting rows,
+ * `listClients` by counting in SQL.
+ *
+ * `risk` folds At Risk and overdue together because the RAG has always treated
+ * them identically, and counting them separately would double-count the
+ * integration that is both.
  */
-export function integRagLabel(c: Client, now?: Date): Rag | null {
-  const integs = c.integrations ?? [];
-  if (!integs.length) return null;
+export interface IntegHealth {
+  /** Active integrations. Zero means "stream not tracked", not "all green". */
+  total: number;
+  /** Completed. */
+  done: number;
+  /** At Risk or overdue. Disjoint from `done` — a Completed row is never either. */
+  risk: number;
+  /** Not Completed and not updated in 7+ days. Never updated counts as stale. */
+  stale: number;
+}
 
-  const atRisk = integs.filter((i) => i.status === "At Risk").length;
-  const overdue = integs.filter((i) => isOverdue(i, now)).length;
-  if (atRisk > 0 || overdue > 0) return "Red";
-
-  const stale = integs.filter(
-    (i) => isStale(i, 7, now) && !isOverdue(i, now),
-  ).length;
-  if (stale > 0) return "Amber";
-
+/**
+ * Per-client Integration RAG, from the counts.
+ * Red if anything is At Risk or overdue; Amber if anything is stale; otherwise
+ * Green. Null when the client has no integrations at all, which the scorecard
+ * renders as "stream not tracked".
+ *
+ * The original rule read "stale but not overdue" for Amber. That qualifier is
+ * dead by the time it is reached — `risk > 0` has already returned Red — so
+ * dropping it preserves behaviour exactly.
+ */
+export function integRagFromHealth(h: IntegHealth): Rag | null {
+  if (!h.total) return null;
+  if (h.risk > 0) return "Red";
+  if (h.stale > 0) return "Amber";
   return "Green";
+}
+
+/** The same four numbers, counted off a fully-loaded client tree. */
+export function integHealthOf(c: Client, now?: Date): IntegHealth {
+  const integs = c.integrations ?? [];
+  return {
+    total: integs.length,
+    done: integs.filter((i) => i.status === "Completed").length,
+    risk: integs.filter((i) => i.status === "At Risk" || isOverdue(i, now)).length,
+    stale: integs.filter((i) => isStale(i, 7, now)).length,
+  };
+}
+
+export function integRagLabel(c: Client, now?: Date): Rag | null {
+  return integRagFromHealth(integHealthOf(c, now));
 }
 
 /** Combine per-domain RAGs into one. Worst wins; all-null stays null. */
@@ -82,15 +117,26 @@ export function milestoneUrgency(
   return "amber";
 }
 
-/** Status counts for the three-segment bar on client rail cards. */
+/**
+ * The three-segment status bar on client rail cards and the Status mix footer.
+ *
+ * `wip` is deliberately "everything else" rather than a status list: the bar
+ * has to add up to the total, and the ten statuses do not partition neatly into
+ * three buckets. Clamped at zero so a future overlap in `done`/`risk` degrades
+ * to a short bar instead of a negative flex.
+ */
+export function integSegments(h: IntegHealth) {
+  return {
+    done: h.done,
+    wip: Math.max(0, h.total - h.done - h.risk),
+    risk: h.risk,
+    total: h.total,
+  };
+}
+
+/** The same, straight off a client tree. */
 export function integStatusSegments(c: Client, now?: Date) {
-  const integs = c.integrations ?? [];
-  const done = integs.filter((i) => i.status === "Completed").length;
-  const risk = integs.filter(
-    (i) => i.status === "At Risk" || isOverdue(i, now),
-  ).length;
-  const wip = integs.length - done - risk;
-  return { done, wip: Math.max(0, wip), risk, total: integs.length };
+  return integSegments(integHealthOf(c, now));
 }
 
 /** Sort worst-first: At Risk/overdue, then stale, then everything else. */

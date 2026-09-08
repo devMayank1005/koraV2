@@ -5,6 +5,9 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { useClientList } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
+import { RagDot } from "@/components/ui/status";
+import { STATUS_COLORS } from "@/lib/domain/constants";
+import { integRagFromHealth, integSegments } from "@/lib/domain/integrations";
 import type { ClientSummary } from "@/lib/db/queries/clients";
 
 export type Domain = "implementation" | "ams" | "integrations";
@@ -26,6 +29,12 @@ export type Domain = "implementation" | "ams" | "integrations";
  * on counts would silently drop all six.
  *
  * Integrations has no membership flag; every client can hold integrations.
+ *
+ * ONLY INTEGRATIONS GETS THE DOT AND THE BAR. 1c is the only artboard that
+ * draws this rail, and `integHealth` is the only per-domain health the list
+ * endpoint carries — Implementation and AMS would need their own aggregates and
+ * their own designed treatment. They keep the same card geometry with their own
+ * meta line, so the three rails stay one component instead of drifting again.
  */
 export function ClientRail({
   domain,
@@ -74,7 +83,10 @@ export function ClientRail({
       style={{ width: 268 }}
       aria-label="Clients"
     >
-      <div className="border-b border-k-line p-3">
+      <div className="border-b border-k-line-2 p-4">
+        <h2 className="mb-3 text-[14px] font-bold text-k-ink">
+          Clients
+        </h2>
         <div className="relative">
           <Search
             size={14}
@@ -86,14 +98,16 @@ export function ClientRail({
             type="search"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            placeholder="Filter clients"
+            placeholder="Filter clients…"
             aria-label="Filter clients"
             className="k-input k-input-sm w-full !pl-8"
           />
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      {/* No padding on the scroller: 1c's cards are full-bleed, divided by a
+          hairline rather than separated by a gap. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <QueryState
           isPending={query.isPending}
           error={query.error}
@@ -101,53 +115,142 @@ export function ClientRail({
           isEmpty={clients.length === 0}
           skeletonRows={8}
           empty={
-            <EmptyState
-              title={term ? "No match" : "No clients in this tracker"}
-              hint={
-                term
-                  ? `Nothing matches "${term.trim()}".`
-                  : domain === "integrations"
-                    ? undefined
-                    : "A client appears here once it is added to this domain."
-              }
-            />
+            <div className="p-3">
+              <EmptyState
+                title={term ? "No match" : "No clients in this tracker"}
+                hint={
+                  term
+                    ? `Nothing matches "${term.trim()}".`
+                    : domain === "integrations"
+                      ? undefined
+                      : "A client appears here once it is added to this domain."
+                }
+              />
+            </div>
           }
         >
-          <ul className="space-y-0.5">
-            {clients.map((c) => {
-              const active = c.id === activeId;
-              const n = countFor(c);
-              return (
-                <li key={c.id}>
-                  <Link
-                    href={hrefFor(c)}
-                    aria-current={active ? "page" : undefined}
-                    className={`flex items-center justify-between gap-2 rounded-[4px] px-2.5 py-2 text-[12.5px] transition-colors ${
-                      active
-                        ? "bg-k-primary/[.08] font-semibold text-k-primary"
-                        : "text-k-ink hover:bg-k-surface"
-                    }`}
-                  >
-                    <span className="min-w-0 truncate">{c.name}</span>
-                    <span
-                      className="k-mono shrink-0 text-[11px] text-k-mute"
-                      title={`${n} ${noun}${n === 1 ? "" : "s"}`}
-                    >
-                      {n}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
+          <ul>
+            {clients.map((c) => (
+              <li key={c.id}>
+                <ClientCard
+                  client={c}
+                  href={hrefFor(c)}
+                  active={c.id === activeId}
+                  count={countFor(c)}
+                  noun={noun}
+                  showHealth={domain === "integrations"}
+                />
+              </li>
+            ))}
           </ul>
         </QueryState>
       </div>
 
-      {clients.length > 0 && (
+      {/* 1c has no footer here, and the default view matches it. The count
+          appears only while filtering, because the input has no other feedback
+          — without it, a typo just empties the list with no explanation. */}
+      {term.trim() !== "" && clients.length > 0 && (
         <div className="border-t border-k-line px-3 py-2 text-[11px] text-k-mute">
-          {clients.length} client{clients.length === 1 ? "" : "s"}
+          {clients.length} of {(query.data ?? []).length} shown
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * One client card.
+ *
+ * The 3px left edge is present on every card as `transparent` rather than
+ * added on selection, so selecting a client cannot shift its text by 3px.
+ */
+function ClientCard({
+  client: c,
+  href,
+  active,
+  count,
+  noun,
+  showHealth,
+}: {
+  client: ClientSummary;
+  href: string;
+  active: boolean;
+  count: number;
+  noun: string;
+  showHealth: boolean;
+}) {
+  const rag = showHealth ? integRagFromHealth(c.integHealth) : null;
+
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`block border-b border-l-[3px] border-b-k-line-2 px-4 py-3 transition-colors ${
+        active
+          ? "border-l-k-primary bg-k-primary/[.05]"
+          : "border-l-transparent hover:bg-k-surface"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={`min-w-0 truncate text-[13px] font-semibold ${
+            active ? "text-k-primary" : "text-k-ink"
+          }`}
+        >
+          {c.name}
+        </span>
+        {rag && <RagDot rag={rag} size={9} />}
+      </div>
+
+      <div className="mt-1.5 truncate text-[10.5px] text-k-mute-2">
+        {count} {count === 1 ? noun : `${noun}s`}
+        {c.masterAssignee && <> · {c.masterAssignee}</>}
+      </div>
+
+      {showHealth && <StatusBar health={c.integHealth} />}
+    </Link>
+  );
+}
+
+/**
+ * The 4px three-segment bar: completed / in flight / at risk.
+ *
+ * A client with no integrations gets a flat empty track rather than nothing.
+ * Fourteen of the twenty-two clients are in that state, and letting their cards
+ * collapse 12px shorter than the rest would make the list look ragged for the
+ * majority case. Zero-width segments are dropped rather than rendered at
+ * `flex: 0`, which some engines still paint as a hairline.
+ */
+function StatusBar({ health }: { health: ClientSummary["integHealth"] }) {
+  const seg = integSegments(health);
+
+  const parts: { key: string; flex: number; fill: string }[] = [
+    { key: "done", flex: seg.done, fill: STATUS_COLORS.Completed.fill },
+    { key: "wip", flex: seg.wip, fill: STATUS_COLORS["In Progress"].fill },
+    { key: "risk", flex: seg.risk, fill: STATUS_COLORS["At Risk"].fill },
+  ].filter((p) => p.flex > 0);
+
+  return (
+    <>
+      <div className="mt-2 flex h-1 gap-0.5" aria-hidden>
+        {parts.length === 0 ? (
+          <div className="flex-1 rounded-[2px] bg-k-line-2" />
+        ) : (
+          parts.map((p) => (
+            <div
+              key={p.key}
+              className="rounded-[2px]"
+              style={{ flex: p.flex, background: p.fill }}
+            />
+          ))
+        )}
+      </div>
+      {/* The bar is the only place these three numbers appear. */}
+      {seg.total > 0 && (
+        <span className="sr-only">
+          {seg.done} completed, {seg.wip} in progress, {seg.risk} at risk
+        </span>
+      )}
+    </>
   );
 }

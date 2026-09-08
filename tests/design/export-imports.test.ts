@@ -27,6 +27,10 @@ const SHADOWED = [
   "sortIntegWorstFirst",
   "integRiskReason",
   "integStatusSegments",
+  // The counts-shaped half of integStatusSegments, added for the client rail.
+  // Same trap, new name: the export report wants its donut slices, not the
+  // three-part progress bar.
+  "integSegments",
   "integMilestoneCounts",
 ];
 

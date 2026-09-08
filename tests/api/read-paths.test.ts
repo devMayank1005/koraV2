@@ -36,6 +36,9 @@ import type { AnyDb } from "@/lib/auth/db-types";
  * route wrapper.
  */
 
+/** Health is all date arithmetic, so the clock is pinned rather than read. */
+const FROZEN = new Date("2026-09-08T00:00:00.000Z");
+
 const MIGRATIONS = path.resolve(process.cwd(), "db/migrations");
 const read = (f: string) => fs.readFileSync(path.join(MIGRATIONS, f), "utf8");
 
@@ -135,6 +138,57 @@ describe("client list", () => {
     expect(full.counts).toEqual({
       integrations: 1, modules: 1, phases: 1, workLog: 1,
     });
+  });
+
+  it("counts integration health off active rows only, on a frozen clock", async () => {
+    // The rail's RAG dot and status bar (artboard 1c) come from these four
+    // numbers in SQL, while the client's own screen computes the same four off
+    // the tree. c_full holds one active integration and one archived one, so a
+    // missing `archived = false` reads as a total of 2.
+    //
+    // The clock is frozen because every one of these numbers is a date
+    // comparison — asserting them against `new Date()` would quietly change
+    // meaning as the wall clock advanced.
+    const rows = await listClients(db, FROZEN);
+    const full = rows.find((r) => r.id === "c_full")!;
+
+    // i1 is At Risk AND four days past its due date. `risk` folds the two
+    // together, so the one row counts once — the whole reason the shape is not
+    // {atRisk, overdue}. Its newest activity entry is 2026-08-20, nineteen
+    // days back, so it is stale as well.
+    expect(full.integHealth).toEqual({ total: 1, done: 0, risk: 1, stale: 1 });
+
+    // No integrations at all is not "all green" — downstream it is a null RAG
+    // and no dot, which is a different statement from "nothing is wrong".
+    const empty = rows.find((r) => r.id === "c_empty")!;
+    expect(empty.integHealth).toEqual({ total: 0, done: 0, risk: 0, stale: 0 });
+
+    // counts.integrations is fed from integHealth.total, so they cannot drift.
+    expect(full.counts.integrations).toBe(full.integHealth.total);
+  });
+
+  it("gives the same health whatever the session timezone", async () => {
+    // The reason `today` is bound from JS rather than read as `current_date`.
+    // A session in IST rolls the date over five and a half hours early, which
+    // would move every overdue and stale count for part of each night.
+    const before = (await listClients(db, FROZEN)).map((r) => r.integHealth);
+    await pg.exec("set time zone 'Asia/Kolkata'");
+    const after = (await listClients(db, FROZEN)).map((r) => r.integHealth);
+    await pg.exec("set time zone 'UTC'");
+    expect(after).toEqual(before);
+  });
+
+  it("counts a never-updated integration as stale", async () => {
+    // `isStale` returns true when there is no update at all — surprising, and
+    // intentional since v1. The SQL has to agree, and it reaches that answer by
+    // a different route (an empty jsonb array, not a null date), so it is
+    // asserted rather than assumed.
+    await db.insert(integrations).values({
+      id: "i_never", clientId: "c_empty", name: "Never touched",
+      status: "In Progress",
+    });
+    const empty = (await listClients(db, FROZEN)).find((r) => r.id === "c_empty")!;
+    expect(empty.integHealth).toEqual({ total: 1, done: 0, risk: 0, stale: 1 });
   });
 
   it("issues a timezone-independent ISO _v for optimistic concurrency", async () => {

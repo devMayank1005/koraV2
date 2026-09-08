@@ -12,6 +12,8 @@ import { vToken } from "@/lib/db/occ";
 import { qualify } from "@/lib/db/sql";
 import type { AnyDb } from "@/lib/auth/db-types";
 import type { Client } from "@/lib/domain/types";
+import type { IntegHealth } from "@/lib/domain/integrations";
+import { todayStr } from "@/lib/utils/dates";
 
 /**
  * Client reads, from the v2 tables.
@@ -44,6 +46,15 @@ export interface ClientSummary {
     phases: number;
     workLog: number;
   };
+  /**
+   * Integration health for the rail's RAG dot and status bar (artboard 1c).
+   *
+   * Counts, not a RAG. The rail derives the letter with
+   * `integRagFromHealth`, the same function the client screen reaches through
+   * `integRagLabel` — so the dot next to a client's name and the pill on that
+   * client's own page cannot disagree.
+   */
+  integHealth: IntegHealth;
 }
 
 const num = (v: unknown): number | null =>
@@ -56,7 +67,19 @@ const num = (v: unknown): number | null =>
  * with 22 clients an N+1 would be 89 round trips through a pooled connection,
  * and the rail renders them all at once.
  */
-export async function listClients(db: AnyDb): Promise<ClientSummary[]> {
+export async function listClients(
+  db: AnyDb,
+  now: Date = new Date(),
+): Promise<ClientSummary[]> {
+  // The SAME "today" the JS health rules use. `todayStr` is UTC-derived — a
+  // quirk ported deliberately from v1 (lib/utils/dates.ts) — while Postgres'
+  // `current_date` follows the session TimeZone GUC. On an IST server the two
+  // roll over five and a half hours apart, and the rail's RAG dot would
+  // disagree with the pill on that client's own page every night. Binding the
+  // date from JS also makes the query deterministic under a frozen clock,
+  // which is the only way the test below can assert exact counts.
+  const today = todayStr(now);
+
   const rows = await db
     .select({
       id: clients.id,
@@ -69,9 +92,6 @@ export async function listClients(db: AnyDb): Promise<ClientSummary[]> {
       hasImplementation: clients.hasImplementation,
       hasAms: clients.hasAms,
       _v: vToken(clients.updatedAt),
-      integrationCount: sql<number>`(
-        select count(*)::int from ${integrations} i
-        where i.client_id = ${qualify(clients.id)} and i.archived = false)`,
       moduleCount: sql<number>`(
         select count(*)::int from ${modules} m
         where m.client_id = ${qualify(clients.id)} and m.archived = false)`,
@@ -81,6 +101,51 @@ export async function listClients(db: AnyDb): Promise<ClientSummary[]> {
       workLogCount: sql<number>`(
         select count(*)::int from ${amsWorkLog} w
         where w.client_id = ${qualify(clients.id)} and w.archived = false)`,
+      /**
+       * Integration health, in ONE pass rather than four.
+       *
+       * `counts.integrations` is fed from this same `total` rather than its own
+       * subquery, so the number under a client's name and the width of its
+       * status bar cannot drift apart.
+       *
+       * `risk` folds At Risk and overdue together deliberately: the RAG has
+       * always treated them as one condition, and two separate counts would
+       * double-count the integration that is both.
+       *
+       * Staleness reads `activity_log -> 0` because entries are prepended, so
+       * element 0 is newest — the same assumption `lastUpdateDate()` makes,
+       * not a new one. `<= today - 7` matches `isStale`'s `d >= days`.
+       *
+       * The two guards on that date are where a naive translation diverges
+       * from the JS, in opposite directions:
+       *   - `nullif(…, '')` — `->>` yields the empty string, not NULL, for
+       *     `{"date": ""}`, and `''::date` raises 22007 mid-query. JS reads
+       *     the same value as falsy and calls it stale. Without this, one bad
+       *     row takes down the whole client list.
+       *   - the shape test — a malformed date makes `daysDiff` return null and
+       *     `isStale` return false; bare `::date` would throw instead.
+       * Neither case exists in today's data. Both are one line to prevent.
+       */
+      integHealth: sql<IntegHealth>`(
+        select json_build_object(
+          'total', count(*)::int,
+          'done', (count(*) filter (where i.status = 'Completed'))::int,
+          'risk', (count(*) filter (
+            where i.status = 'At Risk'
+               or (i.status <> 'Completed'
+                   and i.due_date is not null
+                   and i.due_date < ${today}::date)))::int,
+          'stale', (count(*) filter (
+            where i.status <> 'Completed'
+              and (
+                nullif(i.activity_log -> 0 ->> 'date', '') is null
+                or (
+                  i.activity_log -> 0 ->> 'date' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                  and (i.activity_log -> 0 ->> 'date')::date <= ${today}::date - 7
+                )
+              )))::int)
+        from ${integrations} i
+        where i.client_id = ${qualify(clients.id)} and i.archived = false)`,
     })
     .from(clients)
     .where(eq(clients.archived, false))
@@ -98,11 +163,13 @@ export async function listClients(db: AnyDb): Promise<ClientSummary[]> {
     hasAms: r.hasAms,
     _v: r._v,
     counts: {
-      integrations: r.integrationCount,
+      // Same selected value as integHealth.total, by construction.
+      integrations: r.integHealth.total,
       modules: r.moduleCount,
       phases: r.phaseCount,
       workLog: r.workLogCount,
     },
+    integHealth: r.integHealth,
   }));
 }
 

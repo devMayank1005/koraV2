@@ -19,12 +19,12 @@ import {
   integRagLabel,
   sortIntegWorstFirst,
   isOverdue,
-  daysOverdue,
   isStale,
   integRiskReason,
   integMilestoneCounts,
   lastUpdateDate,
 } from "@/lib/domain/integrations";
+import { STATUS_COLORS } from "@/lib/domain/constants";
 import type { Integration } from "@/lib/domain/types";
 
 /**
@@ -60,6 +60,18 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
 
   const shown = filter === "all" ? all : all.filter((i) => i.status === filter);
 
+  // Chips in STATUSES order, not alphabetical. That array is the app's
+  // canonical status order — it already drives the very `InlineSelect` in the
+  // Status column below — so a chip row sorted any other way would disagree
+  // with the dropdown sitting two inches under it.
+  const chipStatuses = useMemo(
+    () => STATUSES.filter((st) => (counts[st] ?? 0) > 0),
+    [counts],
+  );
+
+  const rag = client ? integRagLabel(client) : null;
+  const staleCount = useMemo(() => all.filter((i) => isStale(i)).length, [all]);
+
   return (
     <div className="p-7">
       <QueryState
@@ -73,15 +85,38 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
             <header className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <h1 className="k-page-title truncate">{client.name}</h1>
-                <p className="mt-1 flex items-center gap-2 text-[12.5px] text-k-mute">
-                  {all.length} integration{all.length === 1 ? "" : "s"}
-                  {client.masterAssignee && <> · Lead: {client.masterAssignee}</>}
-                </p>
+                {/* 1c's meta row. The RAG pill belongs HERE, beside the facts
+                    it summarises, rather than over in the action group where it
+                    read as a fourth button.
+                    1c also carries "SAP SuccessFactors · Go-live 14 Nov 2026"
+                    in this row. There is no platform or go-live column on
+                    `Client` — that is invented data in the mockup — so the
+                    client's description takes the slot when there is one. */}
+                <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-1 text-[12px] text-k-mute">
+                  {client.masterAssignee && (
+                    <span>
+                      Master owner{" "}
+                      <strong className="font-semibold text-k-ink">
+                        {client.masterAssignee}
+                      </strong>
+                    </span>
+                  )}
+                  {client.description && (
+                    <>
+                      {client.masterAssignee && (
+                        <span className="text-k-mute-2" aria-hidden>
+                          |
+                        </span>
+                      )}
+                      <span className="min-w-0 truncate">
+                        {client.description}
+                      </span>
+                    </>
+                  )}
+                  {rag && <RagPill rag={rag} />}
+                </div>
               </div>
               <div className="flex items-center gap-3">
-                {integRagLabel(client) && (
-                  <RagPill rag={integRagLabel(client)!} />
-                )}
                 {/* Before the canEdit gate on purpose: v1 showed the export
                     menu to every role on this screen, and a viewer being able
                     to produce the client report is the point of the role. */}
@@ -162,29 +197,35 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
             {/* Status filter chips — new in the reskin; the old app had no
                 way to narrow this table at all. */}
             {all.length > 0 && (
-              <div
-                className="mt-4 flex flex-wrap gap-1.5"
-                role="group"
-                aria-label="Filter by status"
-              >
-                <Chip
-                  label="All"
-                  count={counts.all}
-                  active={filter === "all"}
-                  onClick={() => setFilter("all")}
-                />
-                {Object.keys(counts)
-                  .filter((k) => k !== "all")
-                  .sort()
-                  .map((status) => (
+              <div className="mt-4 flex flex-wrap items-center gap-1.5">
+                <div
+                  className="flex flex-wrap gap-1.5"
+                  role="group"
+                  aria-label="Filter by status"
+                >
+                  <Chip
+                    label="All"
+                    active={filter === "all"}
+                    onClick={() => setFilter("all")}
+                  />
+                  {chipStatuses.map((status) => (
                     <Chip
                       key={status}
                       label={status}
-                      count={counts[status]}
                       active={filter === status}
                       onClick={() => setFilter(status)}
                     />
                   ))}
+                </div>
+                {/* The per-chip counts 1c drops are not lost — the Status mix
+                    card under the table carries all of them at once, which is
+                    the comparison you actually want them for. */}
+                <span
+                  className="ml-auto text-[11.5px] text-k-mute-2"
+                  aria-live="polite"
+                >
+                  {shown.length} of {all.length} shown
+                </span>
               </div>
             )}
 
@@ -211,6 +252,16 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                 />
               )}
             </div>
+
+            {/* Both cards read the WHOLE set, never the filtered one. A status
+                mix that recomposed itself after you clicked "At Risk" could
+                only ever say "100% At Risk". */}
+            {all.length > 0 && (
+              <div className="mt-3.5 flex flex-wrap gap-3.5">
+                <StatusMix rows={all} />
+                <Staleness count={staleCount} />
+              </div>
+            )}
           </>
         )}
       </QueryState>
@@ -218,14 +269,20 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   );
 }
 
+/**
+ * A status filter chip.
+ *
+ * The active look is tinted rather than the stylesheet's
+ * `.k-chip[data-active="true"]`, which is a solid primary fill with white text.
+ * 1c's chips are tinted, and a row of solid blue blocks would out-shout the
+ * table they filter.
+ */
 function Chip({
   label,
-  count,
   active,
   onClick,
 }: {
   label: string;
-  count: number;
   active: boolean;
   onClick: () => void;
 }) {
@@ -241,8 +298,69 @@ function Chip({
       }`}
     >
       {label}
-      <span className="k-mono ml-1.5 text-[10px] text-k-mute">{count}</span>
     </button>
+  );
+}
+
+/**
+ * Status mix — one bar, one segment per status actually present.
+ *
+ * Segment order follows STATUSES rather than descending count, so the bar for
+ * one client can be compared against another's: a segment that moves position
+ * between two clients is a segment you cannot compare by eye.
+ */
+function StatusMix({ rows }: { rows: Integration[] }) {
+  const present = useMemo(() => {
+    const n: Record<string, number> = {};
+    for (const i of rows) n[i.status] = (n[i.status] ?? 0) + 1;
+    return STATUSES.filter((st) => n[st] > 0).map((st) => ({
+      status: st,
+      count: n[st],
+      fill: STATUS_COLORS[st].fill,
+    }));
+  }, [rows]);
+
+  return (
+    <div className="k-card min-w-[260px] flex-1 px-4 py-3.5">
+      <h2 className="k-eyebrow">Status mix</h2>
+      <div className="my-3 flex h-2 gap-0.5 overflow-hidden rounded-full" aria-hidden>
+        {present.map((p) => (
+          <div key={p.status} style={{ flex: p.count, background: p.fill }} />
+        ))}
+      </div>
+      <ul className="flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-k-mute">
+        {present.map((p) => (
+          <li key={p.status}>
+            <span className="k-mono">{p.count}</span> {p.status}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Staleness — how many integrations nobody has touched in a week.
+ *
+ * The numeral is `--k-text-amber`, not the `--k-fill-warn` amber 1c draws.
+ * #F59E0B is a fill: it fails AA as text on white, and
+ * tests/design/token-usage.test.ts exists to stop exactly that substitution.
+ */
+function Staleness({ count }: { count: number }) {
+  return (
+    <div className="k-card w-[230px] px-4 py-3.5">
+      <h2 className="k-eyebrow">Staleness</h2>
+      <p
+        className={`k-num mt-2 text-[26px] ${
+          count > 0 ? "text-k-text-amber" : "text-k-ink-3"
+        }`}
+      >
+        {count}
+      </p>
+      <p className="mt-1.5 text-[11.5px] text-k-mute">
+        item{count === 1 ? "" : "s"} with no update in 7+ days
+      </p>
+    </div>
   );
 }
 
@@ -262,15 +380,29 @@ function IntegrationTable({
     // this table has six columns that cannot all fit on a phone.
     <div className="k-card overflow-x-auto">
       <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
+        {/* 1c's column rhythm: 1fr / 130 / 118 / 96 / 92, with Milestones and
+            the archive column added — the artboard draws five columns, but
+            dropping either of ours would take real data off the screen.
+            `table-layout` is auto, so these are hints: a column whose content
+            genuinely will not fit still expands rather than clipping. */}
+        <colgroup>
+          <col />
+          <col style={{ width: 130 }} />
+          <col style={{ width: 118 }} />
+          <col style={{ width: 96 }} />
+          <col style={{ width: 100 }} />
+          <col style={{ width: 92 }} />
+          {canEdit && <col style={{ width: 44 }} />}
+        </colgroup>
         <thead>
           <tr className="k-thead">
-            <th className="px-3 py-2 text-left font-semibold">Integration</th>
-            <th className="px-3 py-2 text-left font-semibold">Status</th>
-            <th className="px-3 py-2 text-left font-semibold">Assignee</th>
-            <th className="px-3 py-2 text-left font-semibold">Due</th>
-            <th className="px-3 py-2 text-left font-semibold">Milestones</th>
-            <th className="px-3 py-2 text-left font-semibold">Last update</th>
-            {canEdit && <th className="w-[44px] px-3 py-2" />}
+            <th className="px-4 py-[9px] text-left font-semibold">Integration</th>
+            <th className="px-4 py-[9px] text-left font-semibold">Status</th>
+            <th className="px-4 py-[9px] text-left font-semibold">Assignee</th>
+            <th className="px-4 py-[9px] text-left font-semibold">Due</th>
+            <th className="px-4 py-[9px] text-left font-semibold">Milestones</th>
+            <th className="px-4 py-[9px] text-left font-semibold">Updated</th>
+            {canEdit && <th className="px-4 py-[9px]" />}
           </tr>
         </thead>
         <tbody>
@@ -283,7 +415,7 @@ function IntegrationTable({
 
             return (
               <tr key={i.id} className="k-row k-row-hover">
-                <td className="px-3 py-2.5">
+                <td className="px-4 py-[11px]">
                   <Link
                     href={`/integrations/${clientId}/${encodeURIComponent(i.id)}`}
                     className="font-semibold text-k-ink hover:text-k-primary hover:underline"
@@ -300,7 +432,7 @@ function IntegrationTable({
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-4 py-[11px]">
                   {canEdit ? (
                     <InlineSelect
                       target={{
@@ -321,7 +453,7 @@ function IntegrationTable({
                     <StatusPill status={i.status} size="sm" />
                   )}
                 </td>
-                <td className="px-3 py-2.5 text-k-ink-3">
+                <td className="px-4 py-[11px] text-k-ink-3">
                   {canEdit ? (
                     <InlineSelect
                       target={{
@@ -345,25 +477,24 @@ function IntegrationTable({
                     i.assignee || <span className="text-k-mute">Unassigned</span>
                   )}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-4 py-[11px]">
                   {i.dueDate ? (
+                    // Just the date, per 1c. The days-late count lives on the
+                    // risk line under the integration's name — printing it in
+                    // both places is what pushed this cell onto three lines and
+                    // the row to half again its designed height.
                     <span
-                      className={`k-mono text-[11.5px] ${
+                      className={`k-mono whitespace-nowrap text-[11px] ${
                         overdue ? "font-semibold text-k-text-red" : "text-k-ink-3"
                       }`}
                     >
                       {fmtDate(i.dueDate)}
-                      {overdue && (
-                        <span className="ml-1 font-normal">
-                          ({daysOverdue(i)}d late)
-                        </span>
-                      )}
                     </span>
                   ) : (
                     <span className="text-k-mute">—</span>
                   )}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-4 py-[11px]">
                   {ms.total === 0 ? (
                     <span className="text-k-mute">—</span>
                   ) : (
@@ -377,10 +508,10 @@ function IntegrationTable({
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-4 py-[11px]">
                   {last ? (
                     <span
-                      className={`k-mono text-[11.5px] ${
+                      className={`k-mono whitespace-nowrap text-[11px] ${
                         stale ? "text-k-text-amber" : "text-k-mute"
                       }`}
                       title={stale ? "No update in over a week" : undefined}
@@ -400,7 +531,7 @@ function IntegrationTable({
                   )}
                 </td>
                 {canEdit && (
-                  <td className="px-3 py-2.5">
+                  <td className="px-4 py-[11px]">
                     <ArchiveButton
                       path={`/api/integrations/${encodeURIComponent(i.id)}`}
                       version={i._v}
