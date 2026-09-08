@@ -35,10 +35,16 @@ export function ExportMenu({
   items,
   label = "Export",
   align = "end",
+  tone = "outline",
+  size = "sm",
 }: {
   items: ExportItem[];
   label?: string;
   align?: "start" | "end";
+  /** `primary` for a screen's headline export — artboard 1b's Portfolio Export. */
+  tone?: "outline" | "primary";
+  /** `md` is the handoff's 34px header button; `sm` the 30px in-card one. */
+  size?: "sm" | "md";
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -68,7 +74,7 @@ export function ExportMenu({
       <Menu.Trigger asChild disabled={busy}>
         <button
           type="button"
-          className="k-btn k-btn-outline k-btn-sm"
+          className={`k-btn k-btn-${tone} k-btn-${size}`}
           aria-label={busy ? "Generating export" : label}
         >
           {busy ? (

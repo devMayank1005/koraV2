@@ -23,21 +23,26 @@ export function Kpi({
   href?: string;
   size?: number;
 }) {
+  // VALUE FIRST, per artboard 1b. The label used to sit above it as a 10px
+  // uppercase eyebrow; six tiles read left-to-right as a strip of numbers, and
+  // putting the number first is what makes them scannable as one row rather
+  // than six little headed cards.
   const inner = (
     <>
-      <span className="k-eyebrow">{label}</span>
-      <span
-        className="k-num mt-1.5 block leading-none"
-        style={{ fontSize: size }}
-      >
+      <span className="k-num block leading-none" style={{ fontSize: size }}>
         {value}
       </span>
-      {sub && <span className="mt-1 block text-[11px] text-k-mute">{sub}</span>}
+      <span className="mt-[7px] block text-[11px] leading-[1.35] text-k-mute">
+        {label}
+      </span>
+      {sub && (
+        <span className="mt-1 block text-[11px] text-k-mute-2">{sub}</span>
+      )}
     </>
   );
 
   const className =
-    "k-card block p-3.5" + (href ? " k-card-hover" : "");
+    "k-card block px-4 py-3.5" + (href ? " k-card-hover" : "");
   const style = { borderLeft: `3px solid ${accent}` };
 
   return href ? (
