@@ -8,6 +8,7 @@ import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill } from "@/components/ui/status";
 import { ActivityFeed, fmtBytes } from "@/components/activity-feed";
+import { SplitPane } from "@/components/ui/resizable";
 import { AddMilestoneDialog } from "@/components/create/milestone-dialog";
 import { useUpdateEntity } from "@/lib/query/mutations";
 import { useCanEdit } from "@/lib/query/permissions";
@@ -120,107 +121,111 @@ export function IntegrationDetailView({
               />
             )}
 
-            {/* xl, not lg: this sits inside the tracker column, which is 500px
-                narrower than the viewport. At lg the main pane came out at
-                148px — narrower than the 300px rail beside it. */}
-            <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_300px]">
-              {/* -------------------------------------------------- left */}
-              <div className="min-w-0 space-y-5">
-                <MilestonesCard
-                  clientId={clientId}
-                  milestones={integration.milestones ?? []}
-                  canEdit={canEdit}
-                  onAdd={() => setAdding(true)}
-                />
+            {/* A container query, not a viewport one — see .k-split. The rail
+                is draggable and the split re-decides for itself when the client
+                rail beside it moves, which a media query never could. */}
+            <SplitPane
+              pane="integDetail"
+              label="Resize integration detail rail"
+              className="mt-5"
+              main={
+                <>
+                  <MilestonesCard
+                    clientId={clientId}
+                    milestones={integration.milestones ?? []}
+                    canEdit={canEdit}
+                    onAdd={() => setAdding(true)}
+                  />
 
-                <section className="k-card">
-                  <div className="k-card-head">
-                    <h2 className="k-card-title">Activity &amp; updates</h2>
-                    <span className="k-mono text-[11px] text-k-mute">
-                      {integration.timeline?.length ?? 0}
-                    </span>
-                  </div>
-                  <div className="p-4">
-                    <ActivityFeed
-                      entries={integration.timeline ?? []}
-                      variant="timeline"
-                      dotColor={
-                        (
-                          STATUS_COLORS[integration.status] ??
-                          STATUS_COLORS["Not Started"]
-                        ).fill
-                      }
-                      parentKind="integration"
-                      parentId={integration.id}
-                      clientId={clientId}
-                    />
-                  </div>
-                </section>
+                  <section className="k-card">
+                    <div className="k-card-head">
+                      <h2 className="k-card-title">Activity &amp; updates</h2>
+                      <span className="k-mono text-[11px] text-k-mute">
+                        {integration.timeline?.length ?? 0}
+                      </span>
+                    </div>
+                    <div className="p-4">
+                      <ActivityFeed
+                        entries={integration.timeline ?? []}
+                        variant="timeline"
+                        dotColor={
+                          (
+                            STATUS_COLORS[integration.status] ??
+                            STATUS_COLORS["Not Started"]
+                          ).fill
+                        }
+                        parentKind="integration"
+                        parentId={integration.id}
+                        clientId={clientId}
+                      />
+                    </div>
+                  </section>
 
-                {/* Not on 1d — the mockup's integration had neither field. Both
+                  {/* Not on 1d — the mockup's integration had neither field. Both
                     are real and already on screen, so they stay, below the two
                     cards the artboard does draw. */}
-                {(integration.description || integration.nextAction) && (
+                  {(integration.description || integration.nextAction) && (
+                    <section className="k-card p-4">
+                      {integration.description && (
+                        <>
+                          <h2 className="k-eyebrow">Description</h2>
+                          <p className="mt-1 whitespace-pre-wrap text-[12.5px] text-k-ink-3">
+                            {integration.description}
+                          </p>
+                        </>
+                      )}
+                      {integration.nextAction && (
+                        <>
+                          <h2
+                            className={`k-eyebrow ${integration.description ? "mt-3" : ""}`}
+                          >
+                            Next action
+                          </h2>
+                          <p className="mt-1 whitespace-pre-wrap text-[12.5px] text-k-ink-3">
+                            {integration.nextAction}
+                          </p>
+                        </>
+                      )}
+                    </section>
+                  )}
+                </>
+              }
+              rail={
+                <>
                   <section className="k-card p-4">
-                    {integration.description && (
-                      <>
-                        <h2 className="k-eyebrow">Description</h2>
-                        <p className="mt-1 whitespace-pre-wrap text-[12.5px] text-k-ink-3">
-                          {integration.description}
-                        </p>
-                      </>
-                    )}
-                    {integration.nextAction && (
-                      <>
-                        <h2
-                          className={`k-eyebrow ${integration.description ? "mt-3" : ""}`}
-                        >
-                          Next action
-                        </h2>
-                        <p className="mt-1 whitespace-pre-wrap text-[12.5px] text-k-ink-3">
-                          {integration.nextAction}
-                        </p>
-                      </>
-                    )}
+                    <h2 className="k-eyebrow">Record</h2>
+                    <dl className="mt-3 space-y-3">
+                      <Field label="Assignee" value={integration.assignee} />
+                      <Field
+                        label="Due date"
+                        value={
+                          integration.dueDate
+                            ? fmtDate(integration.dueDate)
+                            : undefined
+                        }
+                        tone={
+                          isOverdue(integration) ? "text-k-text-red" : undefined
+                        }
+                      />
+                      <Field
+                        label="Effort weight"
+                        value={integration.effortWeight?.toString()}
+                      />
+                      <Field
+                        label="Created"
+                        value={
+                          integration.createdAt
+                            ? fmtDate(integration.createdAt)
+                            : undefined
+                        }
+                      />
+                    </dl>
                   </section>
-                )}
-              </div>
 
-              {/* ------------------------------------------------- right */}
-              <div className="space-y-5">
-                <section className="k-card p-4">
-                  <h2 className="k-eyebrow">Record</h2>
-                  <dl className="mt-3 space-y-3">
-                    <Field label="Assignee" value={integration.assignee} />
-                    <Field
-                      label="Due date"
-                      value={
-                        integration.dueDate
-                          ? fmtDate(integration.dueDate)
-                          : undefined
-                      }
-                      tone={
-                        isOverdue(integration) ? "text-k-text-red" : undefined
-                      }
-                    />
-                    <Field
-                      label="Effort weight"
-                      value={integration.effortWeight?.toString()}
-                    />
-                    <Field
-                      label="Created"
-                      value={
-                        integration.createdAt
-                          ? fmtDate(integration.createdAt)
-                          : undefined
-                      }
-                    />
-                  </dl>
-                </section>
-
-                <AttachmentsCard integration={integration} />
-              </div>
-            </div>
+                  <AttachmentsCard integration={integration} />
+                </>
+              }
+            />
           </>
         )}
       </QueryState>

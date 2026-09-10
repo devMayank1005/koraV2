@@ -123,6 +123,7 @@
   --k-rail: 268px;
   --k-side-panel: 300px;
   --k-page-max: 1180px;
+  --k-detail-rail: 300px;
 }
 
 /* --------------------------------------------------------------------------
@@ -371,6 +372,127 @@
      dashboard's sticky KPI band cancels this padding with `-mx-7` and re-adds
      it with `px-7` so the band spans the full page; change this number and the
      band stops lining up with the cards under it. */
+  /* The pane splitter.
+     A 1px rule that thickens into a 5px hit target. Fitts's law says a 1px
+     grab zone is a cruel joke, but a permanently 5px divider would read as a
+     gutter — so the visible line stays 1px and the padded box around it is
+     what the pointer actually hits. `touch-action: none` because without it a
+     trackpad drag scrolls the page instead of moving the handle. */
+  .k-resize-handle {
+    position: relative;
+    flex: none;
+    width: 5px;
+    margin-inline: -2px;
+    cursor: col-resize;
+    touch-action: none;
+    z-index: 30;
+    background: transparent;
+    transition: background-color var(--k-t-fast);
+  }
+
+  .k-resize-handle::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: 2px;
+    width: 1px;
+    background: transparent;
+    transition: background-color var(--k-t-fast);
+  }
+
+  .k-resize-handle:hover::after,
+  .k-resize-handle:focus-visible::after,
+  .k-resize-handle[data-dragging]::after {
+    background: var(--k-primary);
+  }
+
+  .k-resize-handle:focus-visible {
+    outline: none;
+  }
+
+  /* While a drag is live the cursor must not flicker into a text caret every
+     time it crosses a label, and a stray selection must not be painted over
+     half the app. */
+  .k-resizing,
+  .k-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+  }
+
+  /* A page's main pane + side rail, with a draggable divider.
+     THE QUERY IS ON THE SPLIT'S OWN WRAPPER, not on an ancestor and not on the
+     viewport. That is the entire point: these splits live inside the tracker
+     column, which is 232-500px narrower than the window, so a viewport media
+     query was always asking the wrong question — both splits had already been
+     pushed from `lg` to `xl` to compensate. A container query asks the right
+     one, and it re-answers it when the rail beside it is DRAGGED, with no
+     JavaScript and no resize listener.
+
+     Written out here rather than as Tailwind container variants because this
+     codebase has already been bitten once by variant emission order — see the
+     --breakpoint-page note above — and one explicit block cannot lose a
+     cascade fight. */
+  .k-split-container {
+    container-type: inline-size;
+  }
+
+  .k-split {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* Stacked: the rail is just the next block down, and there is nothing to
+     drag, so the handle is not merely hidden but absent from the a11y tree. */
+  .k-split > .k-resize-handle {
+    display: none;
+  }
+
+  @container (min-width: 720px) {
+    .k-split {
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 0;
+    }
+
+    .k-split > .k-resize-handle {
+      display: block;
+      margin-inline: 10px;
+      align-self: stretch;
+    }
+
+    .k-split-main {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .k-split-rail {
+      flex: none;
+      width: var(--k-split-rail, var(--k-detail-rail));
+      min-width: 0;
+    }
+  }
+
+  /* The implementation matrix frame, and the phase panel's own gate.
+     The panel used to be `hidden xl:block` — a WINDOW query for a panel whose
+     room depends on the sidebar and the client rail beside it, both of which
+     are now draggable. Asking the frame instead means dragging the rail
+     narrower opens the panel, and widening it closes it again, with the window
+     never moving. */
+  .k-matrix-frame {
+    container-type: inline-size;
+  }
+
+  .k-phase-panel {
+    display: none;
+  }
+
+  @container (min-width: 1080px) {
+    .k-phase-panel {
+      display: block;
+    }
+  }
+
   .k-page {
     max-width: var(--k-page-max);
     margin-inline: auto;

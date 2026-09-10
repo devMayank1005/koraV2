@@ -2,7 +2,7 @@
 
 import { useRef, type RefObject } from "react";
 import Link from "next/link";
-import { ChevronLeft, Lock, Check } from "lucide-react";
+import { ChevronLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
@@ -11,12 +11,9 @@ import { InlineSelect, InlineText } from "@/components/ui/inline";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { useUpdateEntity } from "@/lib/query/mutations";
 import { ActivityFeed } from "@/components/activity-feed";
-import {
-  PHASES,
-  STATUSES,
-  SIGNOFF_PHASES,
-  shortPhase,
-} from "@/lib/domain/constants";
+import { SplitPane } from "@/components/ui/resizable";
+import { Checklist, SignoffNotice } from "@/components/implementation/phase-parts";
+import { PHASES, STATUSES, shortPhase } from "@/lib/domain/constants";
 import { canCompletePhase, phaseSignedOff } from "@/lib/domain/implementation";
 import { fmtDate } from "@/lib/utils/dates";
 import type { Phase } from "@/lib/domain/types";
@@ -92,11 +89,13 @@ export function PhaseDetailView({
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-k-line-2 px-5 py-4">
                 <div className="min-w-0">
                   <h1 className="text-[20px] font-bold leading-tight text-k-primary">
-                    {phaseName} <span className="text-k-mute-2">—</span> {mod.name}
+                    {phaseName} <span className="text-k-mute-2">—</span>{" "}
+                    {mod.name}
                   </h1>
                   <p className="mt-1.5 text-[12px] text-k-mute">
-                    Phase {PHASES.indexOf(phaseName as (typeof PHASES)[number]) + 1} of{" "}
-                    {PHASES.length}
+                    Phase{" "}
+                    {PHASES.indexOf(phaseName as (typeof PHASES)[number]) + 1}{" "}
+                    of {PHASES.length}
                     {phase?.assignee && (
                       <>
                         {" "}
@@ -154,138 +153,144 @@ export function PhaseDetailView({
                 />
               </div>
             ) : (
-              // xl for the same reason as the integration detail split: this
-              // sits inside the tracker column, 500px narrower than the
-              // viewport, so lg left this pane at 198px.
-              <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_250px]">
-                <div className="min-w-0 space-y-5">
-                  <section className="k-card px-5 py-4">
-                    <h2 className="k-eyebrow">Sign-off checklist</h2>
-                    <Checklist phase={phase} />
-                    <SignoffNotice phase={phase} />
-                  </section>
+              // A container query rather than a viewport one — the split sits
+              // inside the tracker column and now re-decides for itself when
+              // that column is resized. See .k-split.
+              <SplitPane
+                pane="phaseDetail"
+                label="Resize phase record rail"
+                className="mt-6"
+                main={
+                  <>
+                    <section className="k-card px-5 py-4">
+                      <h2 className="k-eyebrow">Sign-off checklist</h2>
+                      <Checklist phase={phase} />
+                      <SignoffNotice phase={phase} />
+                    </section>
 
-                  <section className="k-card p-4" ref={updatesRef}>
-                    <div className="k-card-head">
-                      <h2 className="k-card-title">Updates</h2>
-                      <span className="k-mono text-[11px] text-k-mute">
-                        {phase.updates?.length ?? 0}
-                      </span>
-                    </div>
-                    <div className="mt-3">
-                      <ActivityFeed
-                        entries={phase.updates ?? []}
-                        parentKind="phase"
-                        parentId={phase.id}
-                        clientId={clientId}
-                      />
-                    </div>
-                  </section>
-                </div>
-
-                <aside className="space-y-5">
-                  <section className="k-card px-4 py-3.5">
-                    <h2 className="k-eyebrow">Phase record</h2>
-                    <dl className="mt-2">
-                      <F label="Owner">
-                        <div ref={assigneeRef}>
+                    <section className="k-card p-4" ref={updatesRef}>
+                      <div className="k-card-head">
+                        <h2 className="k-card-title">Updates</h2>
+                        <span className="k-mono text-[11px] text-k-mute">
+                          {phase.updates?.length ?? 0}
+                        </span>
+                      </div>
+                      <div className="mt-3">
+                        <ActivityFeed
+                          entries={phase.updates ?? []}
+                          parentKind="phase"
+                          parentId={phase.id}
+                          clientId={clientId}
+                        />
+                      </div>
+                    </section>
+                  </>
+                }
+                rail={
+                  <>
+                    <section className="k-card px-4 py-3.5">
+                      <h2 className="k-eyebrow">Phase record</h2>
+                      <dl className="mt-2">
+                        <F label="Owner">
+                          <div ref={assigneeRef}>
+                            {canEdit && target ? (
+                              <InlineSelect
+                                target={target}
+                                field="assignee"
+                                label="Assignee"
+                                value={phase.assignee ?? ""}
+                                options={assignees}
+                                version={phase._v}
+                                before={phase}
+                                emptyLabel="Unassigned"
+                                unknownSuffix="(not a current user)"
+                              />
+                            ) : (
+                              phase.assignee || <Dash />
+                            )}
+                          </div>
+                        </F>
+                        <F label="Start">
                           {canEdit && target ? (
-                            <InlineSelect
+                            <InlineText
                               target={target}
-                              field="assignee"
-                              label="Assignee"
-                              value={phase.assignee ?? ""}
-                              options={assignees}
+                              field="startDate"
+                              kind="date"
+                              label="Start date"
+                              value={phase.startDate ?? ""}
                               version={phase._v}
                               before={phase}
-                              emptyLabel="Unassigned"
-                              unknownSuffix="(not a current user)"
+                              nullable
+                              format={fmtDate}
+                            />
+                          ) : phase.startDate ? (
+                            fmtDate(phase.startDate)
+                          ) : (
+                            <Dash />
+                          )}
+                        </F>
+                        <F label="Target">
+                          {canEdit && target ? (
+                            <InlineText
+                              target={target}
+                              field="targetDate"
+                              kind="date"
+                              label="Target date"
+                              value={phase.targetDate ?? ""}
+                              version={phase._v}
+                              before={phase}
+                              nullable
+                              format={fmtDate}
+                            />
+                          ) : phase.targetDate ? (
+                            fmtDate(phase.targetDate)
+                          ) : (
+                            <Dash />
+                          )}
+                        </F>
+                        <F label="Current activity">
+                          {canEdit && target ? (
+                            <InlineText
+                              target={target}
+                              field="currentActivity"
+                              kind="textarea"
+                              label="Current activity"
+                              value={phase.currentActivity ?? ""}
+                              version={phase._v}
+                              before={phase}
                             />
                           ) : (
-                            phase.assignee || <Dash />
+                            phase.currentActivity || <Dash />
                           )}
-                        </div>
-                      </F>
-                      <F label="Start">
-                        {canEdit && target ? (
-                          <InlineText
-                            target={target}
-                            field="startDate"
-                            kind="date"
-                            label="Start date"
-                            value={phase.startDate ?? ""}
-                            version={phase._v}
-                            before={phase}
-                            nullable
-                            format={fmtDate}
-                          />
-                        ) : phase.startDate ? (
-                          fmtDate(phase.startDate)
-                        ) : (
-                          <Dash />
-                        )}
-                      </F>
-                      <F label="Target">
-                        {canEdit && target ? (
-                          <InlineText
-                            target={target}
-                            field="targetDate"
-                            kind="date"
-                            label="Target date"
-                            value={phase.targetDate ?? ""}
-                            version={phase._v}
-                            before={phase}
-                            nullable
-                            format={fmtDate}
-                          />
-                        ) : phase.targetDate ? (
-                          fmtDate(phase.targetDate)
-                        ) : (
-                          <Dash />
-                        )}
-                      </F>
-                      <F label="Current activity">
-                        {canEdit && target ? (
-                          <InlineText
-                            target={target}
-                            field="currentActivity"
-                            kind="textarea"
-                            label="Current activity"
-                            value={phase.currentActivity ?? ""}
-                            version={phase._v}
-                            before={phase}
-                          />
-                        ) : (
-                          phase.currentActivity || <Dash />
-                        )}
-                      </F>
-                      <F label="Next action">
-                        {canEdit && target ? (
-                          <InlineText
-                            target={target}
-                            field="nextAction"
-                            kind="textarea"
-                            label="Next action"
-                            value={phase.nextAction ?? ""}
-                            version={phase._v}
-                            before={phase}
-                          />
-                        ) : (
-                          phase.nextAction || <Dash />
-                        )}
-                      </F>
-                    </dl>
-                  </section>
+                        </F>
+                        <F label="Next action">
+                          {canEdit && target ? (
+                            <InlineText
+                              target={target}
+                              field="nextAction"
+                              kind="textarea"
+                              label="Next action"
+                              value={phase.nextAction ?? ""}
+                              version={phase._v}
+                              before={phase}
+                            />
+                          ) : (
+                            phase.nextAction || <Dash />
+                          )}
+                        </F>
+                      </dl>
+                    </section>
 
-                  <Actions
-                    clientId={clientId}
-                    phase={phase}
-                    canEdit={canEdit}
-                    onLogUpdate={() => focusWithin(updatesRef, "textarea")}
-                    onReassign={() => focusWithin(assigneeRef, "select")}
-                  />
-                </aside>
-              </div>
+                    <Actions
+                      clientId={clientId}
+                      phase={phase}
+                      canEdit={canEdit}
+                      onLogUpdate={() => focusWithin(updatesRef, "textarea")}
+                      onReassign={() => focusWithin(assigneeRef, "select")}
+                    />
+                  </>
+                }
+              />
             )}
           </>
         )}
@@ -356,7 +361,12 @@ function PhaseTrack({
                   }`}
                 >
                   {done && (
-                    <Check size={9} strokeWidth={2} aria-hidden className="mt-px shrink-0" />
+                    <Check
+                      size={9}
+                      strokeWidth={2}
+                      aria-hidden
+                      className="mt-px shrink-0"
+                    />
                   )}
                   <span className="min-w-0">{shortPhase(name)}</span>
                 </span>
@@ -366,133 +376,6 @@ function PhaseTrack({
         })}
       </ol>
     </nav>
-  );
-}
-
-/**
- * The sign-off checklist (artboard 1f).
- *
- * THESE BOXES ARE INDICATORS, NOT CONTROLS. Every item is derived from data
- * that already exists, so there is nothing to store and nothing to click — they
- * are `aria-hidden` spans with the state carried in the text beside them. That
- * is deliberately the opposite of the milestone checkbox on the integration
- * screen, which really does write: a clickable box here would suggest you could
- * sign a phase off by ticking it, when the only thing that signs a phase off is
- * an attached document.
- */
-function Checklist({ phase }: { phase: Phase }) {
-  const updates = phase.updates ?? [];
-  const evidence = updates.find((u) => u.attachment?.storagePath);
-
-  const items: { label: string; done: boolean; meta?: string }[] = [
-    {
-      label: "Owner assigned",
-      done: Boolean(phase.assignee),
-      meta: phase.assignee ?? "Nobody is named on this phase",
-    },
-    {
-      label: "Target date set",
-      done: Boolean(phase.targetDate),
-      meta: phase.targetDate ? fmtDate(phase.targetDate) : "No date committed",
-    },
-    {
-      label: "Progress logged",
-      done: updates.length > 0,
-      meta: updates.length
-        ? `${updates.length} update${updates.length === 1 ? "" : "s"}`
-        : "Nothing recorded yet",
-    },
-    {
-      label: "Signed document attached",
-      done: Boolean(evidence),
-      meta: evidence
-        ? `${evidence.attachment!.fileName} · ${fmtDate(evidence.date)}`
-        : SIGNOFF_PHASES.includes(phase.name)
-          ? "Required before this phase can be completed"
-          : "Not required for this phase",
-    },
-    {
-      label: "Phase completed",
-      done: phase.status === "Completed",
-      meta: phase.status,
-    },
-  ];
-
-  return (
-    <ul className="mt-3">
-      {items.map((it) => (
-        <li
-          key={it.label}
-          className="flex items-start gap-2.5 border-b border-k-line-2 py-2.5 last:border-b-0"
-        >
-          <span
-            className="k-check mt-px"
-            data-checked={it.done ? "true" : "false"}
-            aria-hidden
-          >
-            {it.done && <Check size={11} strokeWidth={2.5} />}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[12.5px] font-medium text-k-ink">
-              {it.label}
-              <span className="sr-only">{it.done ? " — done" : " — not done"}</span>
-            </p>
-            {it.meta && (
-              <p className="mt-0.5 text-[10.5px] text-k-mute-2">{it.meta}</p>
-            )}
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * The gate, stated before anyone tries to complete the phase.
- *
- * BPU/CRP/UAT Signoff cannot be completed without a document attached to an
- * update. That rule lived only in js/events.js in the old app, which meant it
- * was advisory — any direct API call could complete a signoff phase with
- * nothing attached. It is enforced server-side now, and shown here from the
- * same domain function, so the screen and the server cannot disagree.
- *
- * It used to return null on the six ordinary phases, which left `canCompletePhase`'s
- * `warn` branch computed and rendered nowhere. Now every phase says what, if
- * anything, stands between it and the next one.
- */
-function SignoffNotice({ phase }: { phase: Phase }) {
-  const gate = canCompletePhase({ ...phase, status: "Completed" } as Phase);
-  const gated = !gate.ok;
-  const isSignoff = SIGNOFF_PHASES.includes(phase.name);
-  const next = PHASES[PHASES.indexOf(phase.name as (typeof PHASES)[number]) + 1];
-
-  const body = gated
-    ? `${gate.reason}${next ? ` ${next} stays blocked until it is.` : ""}`
-    : isSignoff
-      ? "Signed document attached — this phase can be completed."
-      : phase.status === "Completed"
-        ? "This phase is complete. Nothing gates the next one."
-        : gate.warn ??
-          (next ? `Nothing gates ${next} but this phase finishing.` : "");
-
-  if (!body) return null;
-
-  return (
-    <div
-      className="k-callout mt-4 flex items-start gap-2.5"
-      style={
-        !gated && (isSignoff || phase.status === "Completed")
-          ? { background: "var(--k-tint-green)", borderColor: "transparent" }
-          : undefined
-      }
-    >
-      {gated ? (
-        <Lock size={15} strokeWidth={1.5} className="mt-px shrink-0 text-k-text-amber" />
-      ) : (
-        <Check size={15} strokeWidth={1.5} className="mt-px shrink-0 text-k-text-green" />
-      )}
-      <p className="text-[12px] text-k-ink-3">{body}</p>
-    </div>
   );
 }
 

@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { DateField } from "@/components/ui/date-field";
+import { SplitPane } from "@/components/ui/resizable";
 import { RagPill, QueryLevelPill } from "@/components/ui/status";
 import { ExportMenu } from "@/components/export-menu";
 import { toast } from "sonner";
@@ -81,7 +82,9 @@ export function AmsClientView({ clientId }: { clientId: string }) {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {amsClientRag(client) && <RagPill rag={amsClientRag(client)!} />}
+                {amsClientRag(client) && (
+                  <RagPill rag={amsClientRag(client)!} />
+                )}
                 {canEdit && (
                   <button
                     type="button"
@@ -146,11 +149,12 @@ export function AmsClientView({ clientId }: { clientId: string }) {
                     items={[
                       {
                         label: "Activity Report (PDF)",
-                        disabledReason: totals?.log.length ? undefined : "no entries",
+                        disabledReason: totals?.log.length
+                          ? undefined
+                          : "no entries",
                         run: async () => {
-                          const { exportAmsActivityPdf } = await import(
-                            "@/lib/export/ams-pdf"
-                          );
+                          const { exportAmsActivityPdf } =
+                            await import("@/lib/export/ams-pdf");
                           await exportAmsActivityPdf(client, { from, to });
                           toast.success("Report downloaded.");
                         },
@@ -161,9 +165,8 @@ export function AmsClientView({ clientId }: { clientId: string }) {
                           ? undefined
                           : "no entries",
                         run: async () => {
-                          const { exportClientExcel } = await import(
-                            "@/lib/export/excel"
-                          );
+                          const { exportClientExcel } =
+                            await import("@/lib/export/excel");
                           await exportClientExcel("ams", client);
                           toast.success("Spreadsheet downloaded.");
                         },
@@ -174,38 +177,49 @@ export function AmsClientView({ clientId }: { clientId: string }) {
               )}
             </div>
 
-            <div className="mt-5 grid gap-5 lg:grid-cols-[300px_1fr]">
-              <div className="space-y-5">
-                <RetainerGauge client={client} totals={totals} />
-                <SeverityMix client={client} />
-                <WorkMix totals={totals} />
-              </div>
-
-              <section className="k-card min-w-0 overflow-hidden">
-                <div className="k-card-head px-4 pt-4">
-                  <h2 className="k-card-title">Work log</h2>
-                  <span className="k-mono text-[11px] text-k-mute">
-                    {totals.log.length}
-                  </span>
-                </div>
-                {totals.log.length === 0 ? (
-                  <EmptyState
-                    title="No entries in this window"
-                    hint={
-                      from || to
-                        ? "Widen the dates, or clear them to see everything."
-                        : "This client is in AMS but has nothing logged yet."
-                    }
-                  />
-                ) : (
-                  <WorkLogTable
-                    entries={totals.log}
-                    clientId={clientId}
-                    canEdit={canEdit}
-                  />
-                )}
-              </section>
-            </div>
+            {/* The rail is on the LEFT here, unlike the other two trackers —
+                the retainer gauge is the thing you look at first. SplitPane
+                takes railSide for that, and puts the handle on the correct
+                side so dragging right still grows the rail. */}
+            <SplitPane
+              pane="amsRail"
+              railSide="start"
+              label="Resize retainer rail"
+              className="mt-5"
+              rail={
+                <>
+                  <RetainerGauge client={client} totals={totals} />
+                  <SeverityMix client={client} />
+                  <WorkMix totals={totals} />
+                </>
+              }
+              main={
+                <section className="k-card min-w-0 overflow-hidden">
+                  <div className="k-card-head px-4 pt-4">
+                    <h2 className="k-card-title">Work log</h2>
+                    <span className="k-mono text-[11px] text-k-mute">
+                      {totals.log.length}
+                    </span>
+                  </div>
+                  {totals.log.length === 0 ? (
+                    <EmptyState
+                      title="No entries in this window"
+                      hint={
+                        from || to
+                          ? "Widen the dates, or clear them to see everything."
+                          : "This client is in AMS but has nothing logged yet."
+                      }
+                    />
+                  ) : (
+                    <WorkLogTable
+                      entries={totals.log}
+                      clientId={clientId}
+                      canEdit={canEdit}
+                    />
+                  )}
+                </section>
+              }
+            />
           </>
         )}
       </QueryState>
@@ -300,7 +314,10 @@ function RetainerGauge({
 
       <dl className="mt-4 space-y-2 border-t border-k-line-2 pt-3">
         <Row label="Hours in window" value={`${round(totals.totalHours)} h`} />
-        <Row label="Covered by pool" value={`${round(totals.coveredHours)} h`} />
+        <Row
+          label="Covered by pool"
+          value={`${round(totals.coveredHours)} h`}
+        />
         <Row label="Billable" value={`${round(totals.billableHours)} h`} />
         {totals.balanceAvailable !== null && (
           <Row
@@ -512,10 +529,18 @@ function WorkLogTable({
           <tr className="k-thead">
             <th className="px-3 py-2 text-left font-semibold">Date</th>
             <th className="px-3 py-2 text-left font-semibold">Description</th>
-            <th className="w-[150px] px-3 py-2 text-left font-semibold">Type</th>
-            <th className="w-[150px] px-3 py-2 text-left font-semibold">Severity</th>
-            <th className="w-[130px] px-3 py-2 text-left font-semibold">Status</th>
-            <th className="w-[100px] px-3 py-2 text-right font-semibold">Hours</th>
+            <th className="w-[150px] px-3 py-2 text-left font-semibold">
+              Type
+            </th>
+            <th className="w-[150px] px-3 py-2 text-left font-semibold">
+              Severity
+            </th>
+            <th className="w-[130px] px-3 py-2 text-left font-semibold">
+              Status
+            </th>
+            <th className="w-[100px] px-3 py-2 text-right font-semibold">
+              Hours
+            </th>
             {canEdit && <th className="w-[44px] px-3 py-2" />}
           </tr>
         </thead>

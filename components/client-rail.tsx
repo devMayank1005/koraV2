@@ -40,10 +40,13 @@ export function ClientRail({
   domain,
   activeId,
   hrefFor,
+  width = 268,
 }: {
   domain: Domain;
   activeId?: string;
   hrefFor: (c: ClientSummary) => string;
+  /** From the resizable pane in TrackerShell. */
+  width?: number;
 }) {
   const query = useClientList();
   const [term, setTerm] = useState("");
@@ -80,7 +83,7 @@ export function ClientRail({
   return (
     <aside
       className="flex shrink-0 flex-col border-r border-k-line bg-k-paper"
-      style={{ width: 268 }}
+      style={{ width }}
       aria-label="Clients"
     >
       <div className="border-b border-k-line-2 p-4">

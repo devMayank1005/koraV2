@@ -7,6 +7,8 @@ import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
 import { ExportMenu } from "@/components/export-menu";
+import { ResizeHandle, usePaneWidth } from "@/components/ui/resizable";
+import { Checklist, SignoffNotice } from "@/components/implementation/phase-parts";
 import { toast } from "sonner";
 import { InlineSelect } from "@/components/ui/inline";
 import { useCanEdit } from "@/lib/query/permissions";
@@ -60,6 +62,8 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
     phase: string;
   } | null>(null);
   const [addingModule, setAddingModule] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const panel = usePaneWidth("phasePanel");
   const canEditClient = useCanEdit();
 
   const modules = client?.modules ?? [];
@@ -72,7 +76,7 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
   );
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="k-matrix-frame flex h-full min-h-0">
       {/* The scroll container and the page measure are two different boxes
           here. Centring has to happen INSIDE the scroller — put `k-page` on
           the overflow element and the margins scroll away with the content. */}
@@ -185,13 +189,29 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
       </div>
 
       {selected && selectedModule && (
-        <SidePanel
-          clientId={clientId}
-          module={selectedModule}
-          phaseName={selected.phase}
-          phase={selectedPhase}
-          onClose={() => setSelected(null)}
-        />
+        <>
+          <div className="k-phase-panel">
+            <ResizeHandle
+              pane="phasePanel"
+              edge="start"
+              label="Resize phase panel"
+              onLiveWidth={panel.setLive}
+            />
+          </div>
+          <SidePanel
+            clientId={clientId}
+            module={selectedModule}
+            phaseName={selected.phase}
+            phase={selectedPhase}
+            width={panel.width}
+            expanded={expanded}
+            onToggleExpanded={() => setExpanded((v) => !v)}
+            onClose={() => {
+              setSelected(null);
+              setExpanded(false);
+            }}
+          />
+        </>
       )}
     </div>
   );
@@ -481,12 +501,18 @@ function SidePanel({
   module,
   phaseName,
   phase,
+  width,
+  expanded,
+  onToggleExpanded,
   onClose,
 }: {
   clientId: string;
   module: Module;
   phaseName: string;
   phase: Phase | undefined;
+  width: number;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onClose: () => void;
 }) {
   // The gate is evaluated for display, exactly as the server evaluates it for
@@ -510,8 +536,11 @@ function SidePanel({
 
   return (
     <aside
-      className="hidden shrink-0 overflow-y-auto border-l border-k-line bg-k-paper p-5 xl:block"
-      style={{ width: "var(--k-side-panel)" }}
+      className="k-phase-panel shrink-0 overflow-y-auto border-l border-k-line bg-k-paper p-5"
+      // Expanded, the panel needs room for the checklist and the gate callout,
+      // so it takes a floor of its own rather than the dragged width. Drag
+      // still wins above that floor.
+      style={{ width: expanded ? Math.max(width, 460) : width }}
       aria-label="Phase detail"
     >
       <div className="flex items-start justify-between gap-2">
@@ -608,13 +637,32 @@ function SidePanel({
             </p>
           )}
 
+          {/* OPEN PHASE NO LONGER NAVIGATES AWAY. It used to push the full
+              phase route, which threw away the grid you were comparing against
+              — the one thing the matrix is for. It now widens this pane and
+              renders the phase's own checklist and gate in place, from the
+              SAME components the phase page uses, so the two cannot drift.
+              The route survives untouched behind "Full page", because it is a
+              deep link and the catch-all that copes with the phase name
+              containing a slash. */}
+          {expanded && (
+            <div className="mt-5 space-y-4 border-t border-k-line-2 pt-4">
+              <div>
+                <h3 className="k-eyebrow">Sign-off checklist</h3>
+                <Checklist phase={phase} />
+              </div>
+              <SignoffNotice phase={phase} />
+            </div>
+          )}
+
           <div className="mt-5 flex gap-2">
-            <Link
-              href={`/implementation/${clientId}/${module.id}/${encodeURIComponent(phaseName)}`}
+            <button
+              type="button"
+              onClick={onToggleExpanded}
               className="k-btn k-btn-primary k-btn-sm flex-1 justify-center"
             >
-              Open phase
-            </Link>
+              {expanded ? "Show less" : "Open phase"}
+            </button>
             {canEdit && !logging && (
               <button
                 type="button"
@@ -624,6 +672,13 @@ function SidePanel({
                 Log update
               </button>
             )}
+            <Link
+              href={`/implementation/${clientId}/${module.id}/${encodeURIComponent(phaseName)}`}
+              title="Open the phase on its own page"
+              className="k-btn k-btn-outline k-btn-sm"
+            >
+              Full page
+            </Link>
           </div>
 
           {/* Supplying all three parents is what makes the feed writable, so

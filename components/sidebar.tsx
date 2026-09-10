@@ -86,6 +86,7 @@ export function Sidebar({
   user,
   effectiveRole,
   onSearch,
+  paneWidth,
   mobile = false,
   onNavigate,
 }: {
@@ -94,6 +95,8 @@ export function Sidebar({
   effectiveRole: string;
   /** Absent while the command palette is deferred — see below. */
   onSearch?: () => void;
+  /** Expanded width in px, from the resizable pane. Ignored when collapsed. */
+  paneWidth?: number;
   mobile?: boolean;
   onNavigate?: () => void;
 }) {
@@ -125,7 +128,9 @@ export function Sidebar({
     }
   }
 
-  const width = mobile ? 240 : collapsed ? 56 : 232;
+  // The expanded width is now the resizable pane's; 56 collapsed and 240 as a
+  // mobile drawer stay fixed, because both are modes rather than preferences.
+  const width = mobile ? 240 : collapsed ? 56 : (paneWidth ?? 232);
 
   return (
     <aside

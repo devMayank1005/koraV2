@@ -37,6 +37,49 @@ export interface RecentItem {
 
 const MAX_RECENT = 8;
 
+/**
+ * The resizable layout panes.
+ *
+ * Widths live here rather than in each component because they must survive a
+ * reload and a route change, and because the same pane is rendered by different
+ * screens — the client rail is one pane across all three trackers, not three.
+ */
+export type PaneId =
+  | "sidebar"
+  | "rail"
+  | "phasePanel"
+  | "integDetail"
+  | "phaseDetail"
+  | "amsRail";
+
+/**
+ * Default, minimum and maximum width per pane, in px.
+ *
+ * The minimums are not decoration: below them the pane's own content starts to
+ * overflow, and `tracker-shell` clips horizontally rather than scrolling, so an
+ * under-sized pane truncates silently. `collapseAt` is where a drag gives up
+ * and snaps shut.
+ */
+export const PANES: Record<
+  PaneId,
+  { min: number; max: number; def: number; collapseAt: number }
+> = {
+  sidebar: { min: 180, max: 360, def: 232, collapseAt: 150 },
+  rail: { min: 200, max: 420, def: 268, collapseAt: 170 },
+  phasePanel: { min: 260, max: 680, def: 300, collapseAt: 220 },
+  integDetail: { min: 240, max: 480, def: 300, collapseAt: 210 },
+  phaseDetail: { min: 220, max: 440, def: 250, collapseAt: 190 },
+  amsRail: { min: 240, max: 480, def: 300, collapseAt: 210 },
+};
+
+export const clampPane = (id: PaneId, px: number): number =>
+  Math.max(PANES[id].min, Math.min(PANES[id].max, Math.round(px)));
+
+const defaultPaneWidths = (): Record<PaneId, number> =>
+  Object.fromEntries(
+    (Object.keys(PANES) as PaneId[]).map((k) => [k, PANES[k].def]),
+  ) as Record<PaneId, number>;
+
 interface UiState {
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -44,6 +87,15 @@ interface UiState {
 
   recent: RecentItem[];
   pushRecent: (item: RecentItem) => void;
+
+  /** Pane widths in px. Always clamped to that pane's range. */
+  paneWidths: Record<PaneId, number>;
+  /** Panes the user has shut. The sidebar keeps its own older flag. */
+  paneClosed: Partial<Record<PaneId, boolean>>;
+  setPaneWidth: (id: PaneId, px: number) => void;
+  togglePaneClosed: (id: PaneId) => void;
+  setPaneClosed: (id: PaneId, closed: boolean) => void;
+  resetPane: (id: PaneId) => void;
 
   /** Admin-only preview of a lesser role. Memory-only — see below. */
   viewAsRole: "editor" | "viewer" | null;
@@ -69,6 +121,20 @@ export const useUi = create<UiState>()(
           ),
         })),
 
+      paneWidths: defaultPaneWidths(),
+      paneClosed: {},
+      setPaneWidth: (id, px) =>
+        set((s) => ({ paneWidths: { ...s.paneWidths, [id]: clampPane(id, px) } })),
+      togglePaneClosed: (id) =>
+        set((s) => ({ paneClosed: { ...s.paneClosed, [id]: !s.paneClosed[id] } })),
+      setPaneClosed: (id, closed) =>
+        set((s) => ({ paneClosed: { ...s.paneClosed, [id]: closed } })),
+      resetPane: (id) =>
+        set((s) => ({
+          paneWidths: { ...s.paneWidths, [id]: PANES[id].def },
+          paneClosed: { ...s.paneClosed, [id]: false },
+        })),
+
       viewAsRole: null,
       setViewAsRole: (r) => set({ viewAsRole: r }),
     }),
@@ -88,7 +154,17 @@ export const useUi = create<UiState>()(
       partialize: (s) => ({
         sidebarCollapsed: s.sidebarCollapsed,
         recent: s.recent,
+        paneWidths: s.paneWidths,
+        paneClosed: s.paneClosed,
       }),
+      /**
+       * STILL 1, and deliberately so. There is no `migrate` here, and zustand
+       * DISCARDS persisted state entirely on a version bump when none is
+       * supplied — bumping this to add two keys would throw away everyone's
+       * sidebar preference and recents to gain nothing. `persist` merges the
+       * stored object shallowly over the initial state, so an older envelope
+       * that predates `paneWidths` simply falls back to the defaults above.
+       */
       version: 1,
     },
   ),

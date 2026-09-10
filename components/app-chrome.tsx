@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Menu, X, Eye, WifiOff } from "lucide-react";
 import { CommandPalette } from "@/components/command-palette";
+import { ResizeHandle, usePaneWidth } from "@/components/ui/resizable";
 import { Sidebar, type SidebarUser } from "@/components/sidebar";
 import { RouteBreadcrumbs } from "@/components/breadcrumbs";
 import { useUi, useEffectiveRole } from "@/lib/store/ui";
@@ -41,6 +42,9 @@ export function AppChrome({
   }, []);
   const viewAsRole = useUi((s) => s.viewAsRole);
   const setViewAsRole = useUi((s) => s.setViewAsRole);
+  const collapsed = useUi((s) => s.sidebarCollapsed);
+  const setSidebarCollapsed = useUi((s) => s.setSidebarCollapsed);
+  const sidebarPane = usePaneWidth("sidebar");
 
   // The role comes from the shared hook, not from a second copy of this rule —
   // the dashboard needs the same answer to decide which of its two entirely
@@ -97,14 +101,26 @@ export function AppChrome({
 
       <div className="flex min-h-screen">
         {/* Desktop sidebar */}
-        <div className="hidden md:block">
+        <div className="hidden md:flex">
           {/* The palette exists now, so the search control comes back — the
               condition its own comment set. */}
           <Sidebar
             user={user}
             effectiveRole={effectiveRole}
             onSearch={() => setPaletteOpen(true)}
+            paneWidth={sidebarPane.width}
           />
+          {/* No handle while collapsed: at 56px the pane is a mode, not a
+              width, and offering to resize it would promise something the
+              collapsed treatment cannot honour. The toggle button reopens it. */}
+          {!collapsed && (
+            <ResizeHandle
+              pane="sidebar"
+              label="Resize navigation sidebar"
+              onLiveWidth={sidebarPane.setLive}
+              onCollapse={() => setSidebarCollapsed(true)}
+            />
+          )}
         </div>
 
         {/* Mobile drawer */}
