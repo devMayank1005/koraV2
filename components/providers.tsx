@@ -20,6 +20,23 @@ function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
+        // NEVER PAUSE A QUERY. React Query's default `networkMode: "online"`
+        // does not run `queryFn` at all when its `onlineManager` believes the
+        // browser is offline: the query is created `paused`, `status` stays
+        // "pending" forever, and NO ERROR IS EVER PRODUCED. `QueryState` then
+        // renders a skeleton with no message and no retry — which is exactly
+        // what "the admin panel shows nothing" and "it hangs for a minute then
+        // everything appears at once" look like from the outside.
+        //
+        // Worse, that manager does not seed from `navigator.onLine` (it starts
+        // `true` and only flips on window online/offline events), so whether
+        // you get a silent hang or a raw TypeError depends on WHEN the browser
+        // went offline. Reproduced: navigating to an unvisited client while
+        // offline issued no /api request at all and span eight skeletons.
+        //
+        // "always" means we attempt the request and surface a real failure.
+        // That matches what this file already demands of writes below.
+        networkMode: "always",
         // A client tree is expensive to build and changes on human timescales.
         staleTime: 30_000,
         refetchInterval: 60_000,
@@ -35,6 +52,9 @@ function makeQueryClient() {
         },
       },
       mutations: {
+        // Same reasoning, and the stakes are higher: a paused mutation looks to
+        // the user like a save that worked and then quietly did not.
+        networkMode: "always",
         // Never automatic. A write that failed must surface, not silently
         // replay — the old app's optimistic handlers rolled back by hand and a
         // hidden retry would have fought them.

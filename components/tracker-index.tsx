@@ -59,6 +59,7 @@ export function TrackerIndex({ domain }: { domain: Domain }) {
       <div className="mt-5">
         <QueryState
           isPending={query.isPending}
+          isPaused={query.isPaused}
           error={query.error}
           onRetry={() => query.refetch()}
           isEmpty={rows.length === 0}

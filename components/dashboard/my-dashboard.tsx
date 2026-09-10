@@ -84,6 +84,7 @@ export function MyDashboard({ name }: { name: string }) {
       <div className="mt-5">
         <QueryState
           isPending={trees.isPending}
+          isPaused={trees.isPaused}
           error={trees.error}
           onRetry={() => trees.refetch()}
           isEmpty={!view}

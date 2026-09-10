@@ -64,6 +64,7 @@ export function AmsClientView({ clientId }: { clientId: string }) {
     <div className="p-7">
       <QueryState
         isPending={query.isPending}
+        isPaused={query.isPaused}
         error={query.error}
         onRetry={() => query.refetch()}
         skeletonRows={8}

@@ -54,15 +54,31 @@ export async function api<T>(
   if (opts.ifMatch) headers["if-match"] = opts.ifMatch;
   if (opts.screen) headers["x-kora-screen"] = opts.screen;
 
-  const res = await fetch(path, {
-    method: opts.method ?? "GET",
-    headers,
-    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-    signal: opts.signal,
-    // Same-origin cookies. Never "include" — that would be the CORS setup we
-    // deliberately no longer have.
-    credentials: "same-origin",
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: opts.method ?? "GET",
+      headers,
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      signal: opts.signal,
+      // Same-origin cookies. Never "include" — that would be the CORS setup we
+      // deliberately no longer have.
+      credentials: "same-origin",
+    });
+  } catch (err) {
+    // A TRANSPORT FAILURE IS STILL AN ApiError. `fetch` rejects with a bare
+    // TypeError when the request never reached the server — offline, DNS,
+    // connection refused — and letting that through un-wrapped broke two things
+    // at once: the retry predicate in providers.tsx tests
+    // `error instanceof ApiError`, so it saw a foreign error and burned its
+    // retries; and every screen fell back to "Something went wrong loading
+    // this", which is the least useful sentence available.
+    //
+    // Status 0 is the convention for "no response", and it is below the 500 the
+    // retry predicate uses as its threshold, so this is not retried in a loop.
+    if ((err as { name?: string })?.name === "AbortError") throw err;
+    throw new ApiError(0, "Could not reach the server. Check your connection.");
+  }
 
   if (res.status === 204) return undefined as T;
 

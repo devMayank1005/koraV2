@@ -80,6 +80,7 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
         <div className="k-page">
           <QueryState
             isPending={query.isPending}
+            isPaused={query.isPaused}
             error={query.error}
             onRetry={() => query.refetch()}
             skeletonRows={8}

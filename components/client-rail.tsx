@@ -110,6 +110,7 @@ export function ClientRail({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <QueryState
           isPending={query.isPending}
+          isPaused={query.isPaused}
           error={query.error}
           onRetry={() => query.refetch()}
           isEmpty={clients.length === 0}

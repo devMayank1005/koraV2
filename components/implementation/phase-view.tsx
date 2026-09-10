@@ -65,6 +65,7 @@ export function PhaseDetailView({
     <div className="k-page">
       <QueryState
         isPending={query.isPending}
+        isPaused={query.isPaused}
         error={query.error}
         onRetry={() => query.refetch()}
         skeletonRows={7}

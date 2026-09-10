@@ -111,10 +111,15 @@ export function ErrorState({
         </p>
         {offline && (
           <p className="mt-0.5 text-[12px] text-k-mute">
-            This will load again once your connection is back.
+            The browser reports no connection. You can still try again — that
+            report is sometimes wrong.
           </p>
         )}
-        {onRetry && !offline && (
+        {/* ALWAYS OFFERED, including offline. It used to be hidden exactly when
+            `navigator.onLine` was false, which is the one moment someone most
+            wants it: the browser's offline flag is a hint, not a fact, and a
+            dead end with no button is worse than a retry that fails. */}
+        {onRetry && (
           <button
             type="button"
             onClick={onRetry}
@@ -137,6 +142,7 @@ export function ErrorState({
  */
 export function QueryState({
   isPending,
+  isPaused,
   error,
   isEmpty,
   empty,
@@ -145,6 +151,16 @@ export function QueryState({
   children,
 }: {
   isPending: boolean;
+  /**
+   * `query.isPaused` — a query React Query declined to run.
+   *
+   * Checked BEFORE `isPending`, because a paused query is also pending and
+   * would otherwise render as a skeleton that never resolves: no request, no
+   * error, no explanation. `networkMode: "always"` in providers.tsx should mean
+   * this never happens now; it is handled anyway so that turning that setting
+   * back on cannot silently reintroduce a screen that hangs forever.
+   */
+  isPaused?: boolean;
   error: unknown;
   isEmpty?: boolean;
   empty?: React.ReactNode;
@@ -152,6 +168,14 @@ export function QueryState({
   skeletonRows?: number;
   children: React.ReactNode;
 }) {
+  if (isPaused) {
+    return (
+      <ErrorState
+        error={new ApiError(0, "Waiting for a connection before loading this.")}
+        onRetry={onRetry}
+      />
+    );
+  }
   if (isPending) return <DelayedSkeleton rows={skeletonRows} />;
   if (error) return <ErrorState error={error} onRetry={onRetry} />;
   if (isEmpty) return <>{empty ?? <EmptyState title="Nothing here yet" />}</>;

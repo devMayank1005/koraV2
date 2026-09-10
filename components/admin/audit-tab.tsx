@@ -148,6 +148,7 @@ export function AuditTab() {
 
       <QueryState
         isPending={query.isPending}
+        isPaused={query.isPaused}
         error={query.error}
         onRetry={() => query.refetch()}
         isEmpty={rows.length === 0}

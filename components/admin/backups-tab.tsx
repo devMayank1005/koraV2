@@ -59,6 +59,7 @@ function BackupsCard() {
 
       <QueryState
         isPending={query.isPending}
+        isPaused={query.isPaused}
         error={query.error}
         onRetry={() => query.refetch()}
         skeletonRows={5}
@@ -142,6 +143,7 @@ function ArchivedClientsCard() {
 
       <QueryState
         isPending={query.isPending}
+        isPaused={query.isPaused}
         error={query.error}
         onRetry={() => query.refetch()}
         skeletonRows={4}

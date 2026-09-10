@@ -153,6 +153,7 @@ export function UsersTab() {
 
           <QueryState
             isPending={query.isPending}
+            isPaused={query.isPaused}
             error={query.error}
             onRetry={() => query.refetch()}
             isEmpty={users.length === 0}

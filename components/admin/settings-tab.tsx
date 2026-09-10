@@ -10,6 +10,7 @@ import {
   useSaveCapacityWeights,
 } from "@/lib/query/admin";
 import { Field, fieldProps, validate } from "@/components/ui/form";
+import { ErrorState } from "@/components/ui/states";
 import {
   capacityWeightsUpdate,
   digestRecipientsUpdate,
@@ -88,13 +89,23 @@ function DigestRecipientsCard() {
         matching person goes here. Maximum 50 addresses.
       </p>
 
+      {/* A FAILED LOAD MUST NOT LOOK LIKE AN EMPTY LIST. Without this the card
+          rendered a blank textarea and the Save button stayed live, so a
+          transport failure read as "your recipients were wiped" — and pressing
+          Save would then have written that empty list back. */}
+      {query.error && !query.isPending && (
+        <div className="mb-3">
+          <ErrorState error={query.error} onRetry={() => query.refetch()} />
+        </div>
+      )}
+
       <Field label="Addresses" htmlFor="s-digest" error={error} hint="One per line.">
         <textarea
           {...fieldProps("s-digest", error)}
           className="k-textarea k-mono text-[11.5px]"
           rows={7}
           value={value}
-          disabled={readOnly || query.isPending}
+          disabled={readOnly || query.isPending || Boolean(query.error)}
           onChange={(e) => {
             setText(e.target.value);
             setError(undefined);
@@ -106,7 +117,9 @@ function DigestRecipientsCard() {
         <button
           type="button"
           className="k-btn k-btn-primary k-btn-sm"
-          disabled={readOnly || save.isPending || query.isPending}
+          disabled={
+            readOnly || save.isPending || query.isPending || Boolean(query.error)
+          }
           onClick={submit}
         >
           {save.isPending ? "Saving…" : "Save recipients"}
