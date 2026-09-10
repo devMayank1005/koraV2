@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Menu, X, Eye, WifiOff } from "lucide-react";
+import { CommandPalette } from "@/components/command-palette";
 import { Sidebar, type SidebarUser } from "@/components/sidebar";
 import { RouteBreadcrumbs } from "@/components/breadcrumbs";
 import { useUi, useEffectiveRole } from "@/lib/store/ui";
@@ -23,7 +24,21 @@ export function AppChrome({
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const offline = useOffline();
+
+  // ⌘K / Ctrl-K from anywhere. Bound on the shell rather than inside the
+  // palette so the shortcut works before the palette has ever been opened.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const viewAsRole = useUi((s) => s.viewAsRole);
   const setViewAsRole = useUi((s) => s.setViewAsRole);
 
@@ -83,11 +98,13 @@ export function AppChrome({
       <div className="flex min-h-screen">
         {/* Desktop sidebar */}
         <div className="hidden md:block">
-          {/* No onSearch: the command palette is deferred, and a search button
-              that does nothing on first press costs more confidence than a
-              missing one. The Sidebar hides the control when the prop is
-              absent — restore it in the same commit as the palette. */}
-          <Sidebar user={user} effectiveRole={effectiveRole} />
+          {/* The palette exists now, so the search control comes back — the
+              condition its own comment set. */}
+          <Sidebar
+            user={user}
+            effectiveRole={effectiveRole}
+            onSearch={() => setPaletteOpen(true)}
+          />
         </div>
 
         {/* Mobile drawer */}
@@ -105,7 +122,10 @@ export function AppChrome({
                 effectiveRole={effectiveRole}
                 mobile
                 onNavigate={() => setMobileOpen(false)}
-                onSearch={() => setMobileOpen(false)}
+                onSearch={() => {
+                  setMobileOpen(false);
+                  setPaletteOpen(true);
+                }}
               />
             </div>
           </>
@@ -133,6 +153,7 @@ export function AppChrome({
 
           <RouteBreadcrumbs />
           <main className="min-w-0 flex-1">{children}</main>
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         </div>
       </div>
       </Providers>

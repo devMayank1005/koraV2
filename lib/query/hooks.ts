@@ -42,8 +42,15 @@ import { DEFAULT_CAPACITY_WEIGHTS } from "@/lib/domain/constants";
  * clients and 702 phases the payload is small enough that this is simply
  * cheaper than being clever.
  */
-export function useClientTrees(): UseQueryResult<ClientTree[]> {
+export function useClientTrees(
+  options: { enabled?: boolean } = {},
+): UseQueryResult<ClientTree[]> {
   return useQuery({
+    // `enabled` exists for the command palette, which needs the tree to search
+    // but must not make every screen pay for it: the query only runs once the
+    // palette is opened, and by then it is usually already warm from the
+    // dashboard's own copy of this same cache entry.
+    enabled: options.enabled ?? true,
     queryKey: keys.clients.tree(),
     queryFn: () =>
       api<{ clients: ClientTree[]; signedAttachments: number }>(
