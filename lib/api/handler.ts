@@ -88,10 +88,12 @@ export function withAuth<P = Record<string, string>>(
     routeCtx?: { params?: Promise<P> },
   ): Promise<NextResponse> => {
     const context = `${req.method} ${new URL(req.url).pathname}`;
+    const t0 = performance.now();
     try {
       const db = getDb();
       const token = await readSessionCookie();
       const session = await validateSession(db, token);
+      const authMs = Math.round(performance.now() - t0);
 
       if (!session.valid) {
         // The client maps the reason to a message; it reveals nothing an
@@ -114,7 +116,8 @@ export function withAuth<P = Record<string, string>>(
         assertWritable();
       }
 
-      return await handler({
+      const t1 = performance.now();
+      const res = await handler({
         db,
         user: session.user,
         ip: clientIp(req.headers),
@@ -122,6 +125,23 @@ export function withAuth<P = Record<string, string>>(
         req,
         params: ((await routeCtx?.params) ?? {}) as P,
       });
+
+      /**
+       * SERVER-TIMING, on every authenticated response.
+       *
+       * `auth` is the session lookup — one database round trip that every
+       * request pays before it does anything useful — and `handler` is the
+       * real work. Splitting them is the difference between "the API is slow"
+       * and "the API spends 200ms proving who you are, because the database is
+       * on another continent". Visible in the browser's Network panel under
+       * Timing with no profiler and no redeploy, which is what makes it usable
+       * against production rather than against my laptop.
+       */
+      res.headers.set(
+        "Server-Timing",
+        `auth;dur=${authMs}, handler;dur=${Math.round(performance.now() - t1)}`,
+      );
+      return res;
     } catch (err) {
       return errorResponse(err, context);
     }

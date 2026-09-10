@@ -2,6 +2,7 @@ import { cache } from "react";
 import { getDb } from "@/lib/db/client";
 import { readSessionCookie } from "./cookies";
 import { validateSession, type SessionResult } from "./session";
+import { timed } from "@/lib/server/timing";
 
 /**
  * The signed-in user for THIS request, resolved at most once.
@@ -24,5 +25,5 @@ import { validateSession, type SessionResult } from "./session";
 export const getCurrentSession = cache(async (): Promise<SessionResult> => {
   const token = await readSessionCookie();
   const db = getDb();
-  return validateSession(db, token);
+  return timed("auth", () => validateSession(db, token));
 });

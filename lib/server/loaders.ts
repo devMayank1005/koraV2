@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/queries/clients";
 import { listUsers, type UserOption, type UserAdminView } from "@/lib/db/queries/users";
 import { signAttachmentsIn } from "@/lib/storage";
+import { timed } from "@/lib/server/timing";
 
 /**
  * The GET bodies of the read routes, as plain functions.
@@ -31,7 +32,7 @@ import { signAttachmentsIn } from "@/lib/storage";
 
 /** GET /api/clients — the list with per-domain counts, for the client rails. */
 export async function loadClientList(): Promise<{ clients: ClientSummary[] }> {
-  return { clients: await listClients(getDb()) };
+  return { clients: await timed("list", () => listClients(getDb())) };
 }
 
 /**
@@ -44,8 +45,10 @@ export async function loadClientTrees(): Promise<{
   clients: ClientTree[];
   signedAttachments: number;
 }> {
-  const clients = await getClientTrees(getDb());
-  const signedAttachments = await signAttachmentsIn(clients);
+  const clients = await timed("trees", () => getClientTrees(getDb()));
+  const signedAttachments = await timed("storage", () =>
+    signAttachmentsIn(clients),
+  );
   return { clients, signedAttachments };
 }
 
@@ -58,9 +61,9 @@ export async function loadClientTrees(): Promise<{
 export async function loadClientTree(
   clientId: string,
 ): Promise<{ client: ClientTree | null }> {
-  const client = await getClientTree(getDb(), clientId);
+  const client = await timed("tree", () => getClientTree(getDb(), clientId));
   if (!client) return { client: null };
-  await signAttachmentsIn(client);
+  await timed("storage", () => signAttachmentsIn(client));
   return { client };
 }
 
@@ -72,5 +75,5 @@ export async function loadClientTree(
 export async function loadUsers(
   role: string,
 ): Promise<{ users: (UserOption | UserAdminView)[] }> {
-  return { users: await listUsers(getDb(), role) };
+  return { users: await timed("users", () => listUsers(getDb(), role)) };
 }

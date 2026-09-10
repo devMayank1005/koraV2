@@ -16,6 +16,7 @@ import {
 } from "@/lib/server/loaders";
 import type { ClientSummary, ClientTree } from "@/lib/db/queries/clients";
 import type { UserOption, UserAdminView } from "@/lib/db/queries/users";
+import { TimingMeta } from "@/lib/server/timing";
 
 /**
  * Server-rendering the data, instead of shipping an empty shell that then goes
@@ -126,7 +127,12 @@ export async function Hydrate({
       mine.has(query.queryHash) && defaultShouldDehydrateQuery(query),
   });
 
-  return <HydrationBoundary state={state}>{children}</HydrationBoundary>;
+  return (
+    <HydrationBoundary state={state}>
+      <TimingMeta />
+      {children}
+    </HydrationBoundary>
+  );
 }
 
 /**
