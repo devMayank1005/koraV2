@@ -73,7 +73,7 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   const staleCount = useMemo(() => all.filter((i) => isStale(i)).length, [all]);
 
   return (
-    <div className="p-7">
+    <div className="k-page">
       <QueryState
         isPending={query.isPending}
         error={query.error}

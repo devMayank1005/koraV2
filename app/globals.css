@@ -122,6 +122,7 @@
   --k-sidebar-mobile: 240px;
   --k-rail: 268px;
   --k-side-panel: 300px;
+  --k-page-max: 1180px;
 }
 
 /* --------------------------------------------------------------------------
@@ -274,6 +275,19 @@
   --shadow-k: var(--k-shadow);
   --shadow-k-m: var(--k-shadow-m);
   --shadow-k-l: var(--k-shadow-l);
+
+  /* The artboard width, as a NAMED breakpoint: `page:`.
+     Several grids need to change at the width the page is capped to rather than
+     at Tailwind's `xl` (1280) — the KPI strip and the critical-items table both
+     have room for their full layout at 1180 and were wrapping needlessly for
+     the 100px in between.
+     It has to be a named breakpoint rather than an arbitrary `min-[1180px]:`
+     variant. Tailwind emits arbitrary variants BEFORE the named ones, and at
+     equal specificity source order decides — so `sm:grid-cols-3` was silently
+     beating `min-[1180px]:grid-cols-6` at every width above 1180. Registered
+     here, it sorts by value and lands between `sm` and `xl` where it belongs.
+     Keep this in step with --k-page-max above; they are the same measure. */
+  --breakpoint-page: 1180px;
 }
 
 /* --------------------------------------------------------------------------
@@ -343,6 +357,48 @@
     /* --k-mute, not --k-mute-2: at 10px this must clear AA, and no lighter
        value can. Uppercase + tracking carry the hierarchy instead. */
     color: var(--k-mute);
+  }
+
+  /* The page measure.
+     Artboards 1b-1f were drawn at 1180px total — a 232px sidebar beside a 948px
+     column. Uncapped, a 1920px monitor hands the dashboard 1632px of content,
+     83% more than anything was drawn for, and every `1fr` column swallows the
+     difference: an 880px Item column holding a one-line title. Centring a
+     capped column keeps the drawn proportions at any size and puts the slack in
+     the margins, where it reads as whitespace rather than as a broken row.
+
+     THE 28px IS LOAD-BEARING, not just `p-7` spelled differently. The
+     dashboard's sticky KPI band cancels this padding with `-mx-7` and re-adds
+     it with `px-7` so the band spans the full page; change this number and the
+     band stops lining up with the cards under it. */
+  .k-page {
+    max-width: var(--k-page-max);
+    margin-inline: auto;
+    padding: 28px;
+  }
+
+  /* The dashboard's six-up KPI strip.
+     Written as a class rather than `sm:grid-cols-3 page:grid-cols-6` because
+     Tailwind emits a CUSTOM breakpoint before the built-in ones, and at equal
+     specificity source order decides — so `sm:grid-cols-3` silently beat the
+     1180 rule at every width above 1180 and the strip wrapped to two rows of
+     three on a page that had room for all six. Here the order is explicit. */
+  .k-kpi-strip {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (min-width: 640px) {
+    .k-kpi-strip {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1180px) {
+    .k-kpi-strip {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
   }
 
   .k-page-title {

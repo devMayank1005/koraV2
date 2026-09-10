@@ -49,7 +49,7 @@ export function TrackerIndex({ domain }: { domain: Domain }) {
         : "Integrations";
 
   return (
-    <div className="p-7">
+    <div className="k-page">
       <h1 className="k-page-title">{title}</h1>
       <p className="mt-1 text-[12.5px] text-k-mute">
         {rows.length} client{rows.length === 1 ? "" : "s"} in this tracker.

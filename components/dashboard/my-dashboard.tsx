@@ -73,7 +73,7 @@ export function MyDashboard({ name }: { name: string }) {
   }, [clients, name]);
 
   return (
-    <div className="p-7">
+    <div className="k-page">
       <header>
         <h1 className="k-page-title">Your week</h1>
         <p className="mt-1 text-[12.5px] text-k-mute">

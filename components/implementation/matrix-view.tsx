@@ -55,9 +55,10 @@ const WIP_FILL = "rgba(0, 155, 221, .85)";
 export function ImplementationMatrixView({ clientId }: { clientId: string }) {
   const query = useClient(clientId);
   const client = query.data;
-  const [selected, setSelected] = useState<{ moduleId: string; phase: string } | null>(
-    null,
-  );
+  const [selected, setSelected] = useState<{
+    moduleId: string;
+    phase: string;
+  } | null>(null);
   const [addingModule, setAddingModule] = useState(false);
   const canEditClient = useCanEdit();
 
@@ -72,105 +73,114 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="min-w-0 flex-1 overflow-auto p-7">
-        <QueryState
-          isPending={query.isPending}
-          error={query.error}
-          onRetry={() => query.refetch()}
-          skeletonRows={8}
-        >
-          {client && (
-            <>
-              <header className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h1 className="k-page-title truncate">{client.name}</h1>
-                  {/* 1e's meta line. The percentage that used to sit at 26px on
+      {/* The scroll container and the page measure are two different boxes
+          here. Centring has to happen INSIDE the scroller — put `k-page` on
+          the overflow element and the margins scroll away with the content. */}
+      <div className="min-w-0 flex-1 overflow-auto">
+        <div className="k-page">
+          <QueryState
+            isPending={query.isPending}
+            error={query.error}
+            onRetry={() => query.refetch()}
+            skeletonRows={8}
+          >
+            {client && (
+              <>
+                <header className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h1 className="k-page-title truncate">{client.name}</h1>
+                    {/* 1e's meta line. The percentage that used to sit at 26px on
                       the right is now the first stat card, where it is labelled
                       — and it counts SIGNED-OFF phases there, which is the
                       stricter measure and the one the gate enforces. */}
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-k-mute">
-                    <span>
-                      {modules.length} module{modules.length === 1 ? "" : "s"}
-                      {progress && <> · {progress.total} phases</>}
-                      {client.masterAssignee && (
-                        <>
-                          {" "}
-                          · PMO{" "}
-                          <span className="font-semibold text-k-ink">
-                            {client.masterAssignee}
-                          </span>
-                        </>
-                      )}
-                    </span>
-                    {rag && <RagPill rag={rag} />}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-k-mute">
+                      <span>
+                        {modules.length} module{modules.length === 1 ? "" : "s"}
+                        {progress && <> · {progress.total} phases</>}
+                        {client.masterAssignee && (
+                          <>
+                            {" "}
+                            · PMO{" "}
+                            <span className="font-semibold text-k-ink">
+                              {client.masterAssignee}
+                            </span>
+                          </>
+                        )}
+                      </span>
+                      {rag && <RagPill rag={rag} />}
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-            <ExportMenu
-              items={[
-                {
-                  label: "Implementation Report (PDF)",
-                  disabledReason: modules.length ? undefined : "no modules",
-                  run: async () => {
-                    const { exportImplementationPdf } = await import(
-                      "@/lib/export/implementation-pdf"
-                    );
-                    await exportImplementationPdf(client);
-                    toast.success("Report downloaded.");
-                  },
-                },
-                {
-                  label: "Excel (Implementation)",
-                  disabledReason: modules.length ? undefined : "no modules",
-                  run: async () => {
-                    const { exportClientExcel } = await import("@/lib/export/excel");
-                    await exportClientExcel("impl", client);
-                    toast.success("Spreadsheet downloaded.");
-                  },
-                },
-              ]}
-            />
-                  {canEditClient && (
-                    <button
-                      type="button"
-                      className="k-btn k-btn-primary k-btn-sm"
-                      onClick={() => setAddingModule(true)}
-                    >
-                      <Plus size={13} strokeWidth={1.5} aria-hidden />
-                      Module
-                    </button>
-                  )}
-                </div>
-              </header>
+                  <div className="flex items-center gap-3">
+                    <ExportMenu
+                      items={[
+                        {
+                          label: "Implementation Report (PDF)",
+                          disabledReason: modules.length
+                            ? undefined
+                            : "no modules",
+                          run: async () => {
+                            const { exportImplementationPdf } =
+                              await import("@/lib/export/implementation-pdf");
+                            await exportImplementationPdf(client);
+                            toast.success("Report downloaded.");
+                          },
+                        },
+                        {
+                          label: "Excel (Implementation)",
+                          disabledReason: modules.length
+                            ? undefined
+                            : "no modules",
+                          run: async () => {
+                            const { exportClientExcel } =
+                              await import("@/lib/export/excel");
+                            await exportClientExcel("impl", client);
+                            toast.success("Spreadsheet downloaded.");
+                          },
+                        },
+                      ]}
+                    />
+                    {canEditClient && (
+                      <button
+                        type="button"
+                        className="k-btn k-btn-primary k-btn-sm"
+                        onClick={() => setAddingModule(true)}
+                      >
+                        <Plus size={13} strokeWidth={1.5} aria-hidden />
+                        Module
+                      </button>
+                    )}
+                  </div>
+                </header>
 
-              <AddModuleDialog
-                clientId={clientId}
-                clientName={client.name}
-                open={addingModule}
-                onOpenChange={setAddingModule}
-              />
+                <AddModuleDialog
+                  clientId={clientId}
+                  clientName={client.name}
+                  open={addingModule}
+                  onOpenChange={setAddingModule}
+                />
 
-              {modules.length === 0 ? (
-                <div className="mt-5">
-                  {/* The null-sentinel case: in the domain, nothing in it yet.
+                {modules.length === 0 ? (
+                  <div className="mt-5">
+                    {/* The null-sentinel case: in the domain, nothing in it yet.
                       Six real clients are in exactly this state, and they are
                       the reason migration 0003 exists. */}
-                  <EmptyState
-                    title="No modules yet"
-                    hint="This client is in the Implementation tracker but has no modules. Add one to start the nine-phase grid."
+                    <EmptyState
+                      title="No modules yet"
+                      hint="This client is in the Implementation tracker but has no modules. Add one to start the nine-phase grid."
+                    />
+                  </div>
+                ) : (
+                  <Matrix
+                    client={client}
+                    modules={modules}
+                    selected={selected}
+                    onSelect={setSelected}
                   />
-                </div>
-              ) : (
-                <Matrix
-                  client={client}
-                  modules={modules}
-                  selected={selected}
-                  onSelect={setSelected}
-                />
-              )}
-            </>
-          )}
-        </QueryState>
+                )}
+              </>
+            )}
+          </QueryState>
+        </div>
       </div>
 
       {selected && selectedModule && (
@@ -369,7 +379,9 @@ function Stat({
 }) {
   return (
     <div className="k-card px-4 py-3.5">
-      <p className={`k-num ${small ? "text-[18px]" : "text-[24px]"} ${tone ?? ""}`}>
+      <p
+        className={`k-num ${small ? "text-[18px]" : "text-[24px]"} ${tone ?? ""}`}
+      >
         {value}
       </p>
       <p className="mt-1.5 text-[11px] text-k-mute">{label}</p>
@@ -434,7 +446,8 @@ function Cell({
         background: empty ? "var(--k-line-2)" : undefined,
         // A missing phase is a data problem, not a status. It reads as a dashed
         // hairline so it cannot be mistaken for "Not Started".
-        boxShadow: mark === null ? "inset 0 0 0 1px var(--k-line-2)" : undefined,
+        boxShadow:
+          mark === null ? "inset 0 0 0 1px var(--k-line-2)" : undefined,
         outline: selected ? "2px solid var(--k-primary)" : undefined,
         outlineOffset: selected ? "-2px" : undefined,
       }}
@@ -482,13 +495,13 @@ function SidePanel({
   const canEdit = useCanEdit();
   const [logging, setLogging] = useState(false);
   const phaseTarget = phase
-    ? ({
+    ? {
         kind: "phase" as const,
         clientId,
         id: phase.id,
         path: `/api/phases/${encodeURIComponent(phase.id)}`,
         screen: "implementation",
-      })
+      }
     : undefined;
 
   const owner = moduleOwner(module);

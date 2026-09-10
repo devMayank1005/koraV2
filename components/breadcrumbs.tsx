@@ -62,6 +62,12 @@ export function Breadcrumbs({
     );
   }
 
+  // FULL-BLEED, and deliberately NOT centred on the page measure.
+  // The only routes that render this bar are the trackers, where it spans the
+  // whole content column — above the 268px client rail as well as the page
+  // beside it, which is exactly what artboard 1c draws. Centring its contents
+  // on the page measure would pull the crumb off the rail's left edge and line
+  // it up with nothing.
   return (
     <nav
       aria-label="Breadcrumb"

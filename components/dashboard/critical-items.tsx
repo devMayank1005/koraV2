@@ -46,9 +46,17 @@ export function CriticalItems({
   if (variant === "table") {
     return (
       <>
-        {/* Below md the four columns collapse to the stacked row — the same
-            markup the list variant renders — rather than scrolling sideways. */}
-        <div className="k-thead-plain hidden grid-cols-[1fr_180px_140px_160px] md:grid">
+        {/* 1180px, NOT md — and not `xl` either.
+            Tailwind breakpoints measure the VIEWPORT, but this grid lives in a
+            column 288px narrower than it. At a 768px viewport the dashboard
+            column is ~448px against 576px of fixed columns and gaps, so `1fr`
+            collapsed to zero and the row overflowed between roughly 768 and
+            950 — a bug this variant shipped with.
+            1180 rather than xl's 1280 because 1180 is the artboard's own width:
+            at exactly that viewport the column is 892px, which is the measure
+            everything here was drawn against. Below it the row falls back to
+            the stacked list, which is what that variant is for. */}
+        <div className="k-thead-plain hidden grid-cols-[1fr_200px_160px_180px] page:grid">
           <div>Item</div>
           <div>Client</div>
           <div>Status / age</div>
@@ -58,7 +66,7 @@ export function CriticalItems({
           {shown.map((item, i) => (
             <li
               key={`${item.clientId}-${item.title}-${i}`}
-              className="grid grid-cols-1 items-center gap-x-3 border-b border-l-[3px] border-b-k-line-2 px-[15px] py-2.5 text-[12.5px] last:border-b-0 md:grid-cols-[1fr_180px_140px_160px]"
+              className="grid grid-cols-1 items-center gap-x-3 border-b border-l-[3px] border-b-k-line-2 px-[15px] py-2.5 text-[12.5px] last:border-b-0 page:grid-cols-[1fr_200px_160px_180px]"
               style={{ borderLeftColor: severityFill(item.severity) }}
             >
               <div className="min-w-0">
@@ -94,7 +102,10 @@ export function CriticalItems({
     <>
       <ul className="divide-y divide-k-line-2">
         {shown.map((item, i) => (
-          <li key={`${item.clientId}-${item.title}-${i}`} className="py-2.5 first:pt-0">
+          <li
+            key={`${item.clientId}-${item.title}-${i}`}
+            className="py-2.5 first:pt-0"
+          >
             <div className="flex items-start gap-2">
               {item.severity === 0 && (
                 <AlertTriangle
@@ -106,7 +117,10 @@ export function CriticalItems({
               )}
               <div className="min-w-0 flex-1">
                 <p className="text-[12.5px] font-semibold text-k-ink">
-                  <Link href={hrefFor(item)} className="hover:text-k-primary hover:underline">
+                  <Link
+                    href={hrefFor(item)}
+                    className="hover:text-k-primary hover:underline"
+                  >
                     {item.title}
                   </Link>
                 </p>
@@ -136,7 +150,9 @@ function Overflow({
 }) {
   if (total <= shown) return null;
   return (
-    <p className={`text-[11px] text-k-mute ${inset ? "px-[18px] py-2.5" : "mt-2.5"}`}>
+    <p
+      className={`text-[11px] text-k-mute ${inset ? "px-[18px] py-2.5" : "mt-2.5"}`}
+    >
       {total - shown} more not shown
     </p>
   );
@@ -176,7 +192,9 @@ function hrefFor(item: CriticalItem): string {
 }
 
 /** The chip buckets artboard 1b draws, matched against those same values. */
-export function criticalDomainOf(item: CriticalItem): "Integration" | "Phase" | "AMS" {
+export function criticalDomainOf(
+  item: CriticalItem,
+): "Integration" | "Phase" | "AMS" {
   if (item.domain === "Phase") return "Phase";
   if (item.domain.startsWith("AMS")) return "AMS";
   return "Integration";

@@ -41,8 +41,7 @@ export function Kpi({
     </>
   );
 
-  const className =
-    "k-card block px-4 py-3.5" + (href ? " k-card-hover" : "");
+  const className = "k-card block px-4 py-3.5" + (href ? " k-card-hover" : "");
   const style = { borderLeft: `3px solid ${accent}` };
 
   return href ? (
@@ -56,11 +55,14 @@ export function Kpi({
   );
 }
 
-/** The 6-up strip. Collapses to 3 then 2 rather than scrolling sideways. */
+/**
+ * The 6-up strip. Collapses to 3 then 2 rather than scrolling sideways.
+ *
+ * The 6-up engages at 1180px — the artboard's own width, and the width the page
+ * is capped to — rather than at `xl`'s 1280. Between the two the strip was
+ * wrapping to two rows of three tall, mostly-empty tiles on a page that already
+ * had room for all six.
+ */
 export function KpiStrip({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      {children}
-    </div>
-  );
+  return <div className="k-kpi-strip">{children}</div>;
 }

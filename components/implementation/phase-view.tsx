@@ -62,7 +62,7 @@ export function PhaseDetailView({
     : undefined;
 
   return (
-    <div className="p-7">
+    <div className="k-page">
       <QueryState
         isPending={query.isPending}
         error={query.error}
@@ -153,7 +153,10 @@ export function PhaseDetailView({
                 />
               </div>
             ) : (
-              <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_250px]">
+              // xl for the same reason as the integration detail split: this
+              // sits inside the tracker column, 500px narrower than the
+              // viewport, so lg left this pane at 198px.
+              <div className="mt-6 grid gap-5 xl:grid-cols-[1fr_250px]">
                 <div className="min-w-0 space-y-5">
                   <section className="k-card px-5 py-4">
                     <h2 className="k-eyebrow">Sign-off checklist</h2>

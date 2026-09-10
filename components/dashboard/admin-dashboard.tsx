@@ -94,7 +94,7 @@ export function AdminDashboard() {
   const amber = view?.rows.filter((r) => r.overall === "Amber").length ?? 0;
 
   return (
-    <div className="p-7">
+    <div className="k-page">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Datestamp />

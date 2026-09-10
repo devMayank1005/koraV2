@@ -13,7 +13,11 @@ import { useUpdateEntity } from "@/lib/query/mutations";
 import { useCanEdit } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import { STATUS_COLORS } from "@/lib/domain/constants";
-import { isOverdue, daysOverdue, milestoneUrgency } from "@/lib/domain/integrations";
+import {
+  isOverdue,
+  daysOverdue,
+  milestoneUrgency,
+} from "@/lib/domain/integrations";
 import type { Attachment, Integration, Milestone } from "@/lib/domain/types";
 
 /**
@@ -40,7 +44,7 @@ export function IntegrationDetailView({
   const [adding, setAdding] = useState(false);
 
   return (
-    <div className="p-7">
+    <div className="k-page">
       <QueryState
         isPending={query.isPending}
         error={query.error}
@@ -115,7 +119,10 @@ export function IntegrationDetailView({
               />
             )}
 
-            <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_300px]">
+            {/* xl, not lg: this sits inside the tracker column, which is 500px
+                narrower than the viewport. At lg the main pane came out at
+                148px — narrower than the 300px rail beside it. */}
+            <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_300px]">
               {/* -------------------------------------------------- left */}
               <div className="min-w-0 space-y-5">
                 <MilestonesCard
@@ -137,8 +144,10 @@ export function IntegrationDetailView({
                       entries={integration.timeline ?? []}
                       variant="timeline"
                       dotColor={
-                        (STATUS_COLORS[integration.status] ??
-                          STATUS_COLORS["Not Started"]).fill
+                        (
+                          STATUS_COLORS[integration.status] ??
+                          STATUS_COLORS["Not Started"]
+                        ).fill
                       }
                       parentKind="integration"
                       parentId={integration.id}
@@ -162,7 +171,9 @@ export function IntegrationDetailView({
                     )}
                     {integration.nextAction && (
                       <>
-                        <h2 className={`k-eyebrow ${integration.description ? "mt-3" : ""}`}>
+                        <h2
+                          className={`k-eyebrow ${integration.description ? "mt-3" : ""}`}
+                        >
                           Next action
                         </h2>
                         <p className="mt-1 whitespace-pre-wrap text-[12.5px] text-k-ink-3">
@@ -183,9 +194,13 @@ export function IntegrationDetailView({
                     <Field
                       label="Due date"
                       value={
-                        integration.dueDate ? fmtDate(integration.dueDate) : undefined
+                        integration.dueDate
+                          ? fmtDate(integration.dueDate)
+                          : undefined
                       }
-                      tone={isOverdue(integration) ? "text-k-text-red" : undefined}
+                      tone={
+                        isOverdue(integration) ? "text-k-text-red" : undefined
+                      }
                     />
                     <Field
                       label="Effort weight"
@@ -194,7 +209,9 @@ export function IntegrationDetailView({
                     <Field
                       label="Created"
                       value={
-                        integration.createdAt ? fmtDate(integration.createdAt) : undefined
+                        integration.createdAt
+                          ? fmtDate(integration.createdAt)
+                          : undefined
                       }
                     />
                   </dl>
@@ -262,7 +279,9 @@ function MilestonesCard({
             Add milestone
           </button>
         ) : (
-          <span className="k-mono text-[11px] text-k-mute">{milestones.length}</span>
+          <span className="k-mono text-[11px] text-k-mute">
+            {milestones.length}
+          </span>
         )}
       </div>
 
@@ -488,5 +507,8 @@ function AttachmentsCard({ integration }: { integration: Integration }) {
 function extOf(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
   if (dot < 0 || dot === fileName.length - 1) return "FILE";
-  return fileName.slice(dot + 1).toUpperCase().slice(0, 4);
+  return fileName
+    .slice(dot + 1)
+    .toUpperCase()
+    .slice(0, 4);
 }
