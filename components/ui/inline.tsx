@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUpdateEntity, buildPatch, isConflict, type EntityKind } from "@/lib/query/mutations";
 import { ApiError } from "@/lib/api/fetcher";
+import { DateField } from "@/components/ui/date-field";
 
 /**
  * Inline editing.
@@ -360,12 +361,28 @@ export function InlineText<T extends object>({
     );
   }
 
+  if (kind === "date") {
+    // The native picker used to be what guaranteed YYYY-MM-DD; DateField makes
+    // the same guarantee and can actually be styled. It commits when a day is
+    // picked or the typed text settles, rather than on every blur — opening its
+    // own calendar blurs the input, and committing there would close the editor
+    // before the calendar could be used.
+    return (
+      <DateField
+        value={draft}
+        onChange={setDraft}
+        onCommit={commit}
+        label={label}
+        disabled={update.isPending}
+        className="k-input k-input-sm"
+      />
+    );
+  }
+
   return (
     <input
       ref={inputRef}
-      // `type="date"` gives the native picker AND enforces the YYYY-MM-DD the
-      // schema requires, so a malformed date cannot reach the server at all.
-      type={kind === "date" ? "date" : kind === "number" ? "number" : "text"}
+      type={kind === "number" ? "number" : "text"}
       step={kind === "number" ? "any" : undefined}
       min={kind === "number" ? 0 : undefined}
       className="k-input k-input-sm"

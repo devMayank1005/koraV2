@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
+import { DateField } from "@/components/ui/date-field";
 import { RagPill, QueryLevelPill } from "@/components/ui/status";
 import { ExportMenu } from "@/components/export-menu";
 import { toast } from "sonner";
@@ -104,19 +105,19 @@ export function AmsClientView({ clientId }: { clientId: string }) {
             <div className="mt-4 flex flex-wrap items-end gap-2">
               <label className="k-field">
                 <span className="k-label">From</span>
-                <input
-                  type="date"
+                <DateField
+                  label="From date"
                   value={from}
-                  onChange={(e) => setFrom(e.target.value)}
+                  onChange={setFrom}
                   className="k-input k-input-sm"
                 />
               </label>
               <label className="k-field">
                 <span className="k-label">To</span>
-                <input
-                  type="date"
+                <DateField
+                  label="To date"
                   value={to}
-                  onChange={(e) => setTo(e.target.value)}
+                  onChange={setTo}
                   className="k-input k-input-sm"
                 />
               </label>

@@ -2,6 +2,7 @@
 
 import { toast } from "sonner";
 import { Dialog } from "@/components/ui/dialog";
+import { DateField } from "@/components/ui/date-field";
 import { Field, fieldProps, validate, useCreateForm, omitEmpty } from "@/components/ui/form";
 import { useCreateEntity } from "@/lib/query/mutations";
 import { useSession, useAssigneeOptions } from "@/lib/query/permissions";
@@ -151,22 +152,22 @@ export function AddWorkLogDialog({
       <div className="space-y-3.5">
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Field label="Date raised" htmlFor="w-date" error={errors.dateRaised} required>
-            <input
+            <DateField
               {...fieldProps("w-date", errors.dateRaised)}
-              type="date"
-              className="k-input"
+              label="Date raised"
+              invalid={Boolean(errors.dateRaised)}
+              clearable={false}
               value={values.dateRaised}
-              autoFocus
-              onChange={(e) => set("dateRaised", e.target.value)}
+              onChange={(v) => set("dateRaised", v)}
             />
           </Field>
           <Field label="Due date" htmlFor="w-due" error={errors.dueDate}>
-            <input
+            <DateField
               {...fieldProps("w-due", errors.dueDate)}
-              type="date"
-              className="k-input"
+              label="Due date"
+              invalid={Boolean(errors.dueDate)}
               value={values.dueDate}
-              onChange={(e) => set("dueDate", e.target.value)}
+              onChange={(v) => set("dueDate", v)}
             />
           </Field>
         </div>

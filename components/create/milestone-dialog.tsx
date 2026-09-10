@@ -2,6 +2,7 @@
 
 import { toast } from "sonner";
 import { Dialog } from "@/components/ui/dialog";
+import { DateField } from "@/components/ui/date-field";
 import { Field, fieldProps, validate, useCreateForm, omitEmpty } from "@/components/ui/form";
 import { useCreateEntity } from "@/lib/query/mutations";
 import { useAssigneeOptions } from "@/lib/query/permissions";
@@ -152,12 +153,12 @@ export function AddMilestoneDialog({
           error={errors.dueDate}
           hint="Drives the urgency tint on the milestone row."
         >
-          <input
+          <DateField
             {...fieldProps("ms-due", errors.dueDate)}
-            type="date"
-            className="k-input"
+            label="Due date"
+            invalid={Boolean(errors.dueDate)}
             value={values.dueDate}
-            onChange={(e) => set("dueDate", e.target.value)}
+            onChange={(v) => set("dueDate", v)}
           />
         </Field>
 
