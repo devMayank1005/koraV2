@@ -55,7 +55,21 @@ function createDb(url: string) {
   const sql = postgres(url, {
     max: pooled ? 4 : 8,
     prepare: false,
-    idle_timeout: 20,
+    /**
+     * KEEP THE CONNECTION, because opening one is not cheap.
+     *
+     * At 20 seconds, a low-traffic internal tool re-handshakes with Supavisor
+     * on very nearly every navigation — TCP, then TLS, then auth, which is
+     * several round trips before the first query is even sent. That was most of
+     * a second while the functions ran in `iad1` and the database sat in
+     * Mumbai; with both in `bom1` (see vercel.json) it is small, but it is
+     * still several round trips bought for nothing.
+     *
+     * Three minutes covers someone clicking through a few screens without
+     * holding sockets open across genuinely idle periods. Vercel freezes an
+     * idle instance anyway, so this is an upper bound rather than a promise.
+     */
+    idle_timeout: 180,
     connect_timeout: 10,
     ssl: url.includes("localhost") || url.includes("127.0.0.1")
       ? false
