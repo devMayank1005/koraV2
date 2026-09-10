@@ -1,9 +1,9 @@
-import { TrackerShell } from "@/components/tracker-shell";
+import { TrackerFrame } from "@/components/tracker-frame";
 
 export default function IntegrationsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <TrackerShell domain="integrations">{children}</TrackerShell>;
+  return <TrackerFrame domain="integrations">{children}</TrackerFrame>;
 }

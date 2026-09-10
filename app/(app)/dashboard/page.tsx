@@ -1,5 +1,6 @@
 import { getCurrentSession } from "@/lib/auth/current-session";
 import { DashboardSwitch } from "@/components/dashboard/switch";
+import { Hydrate, clientTreesQuery } from "@/lib/query/prefetch";
 
 /**
  * There are TWO dashboards, and which one you get is not a permissions
@@ -16,10 +17,18 @@ export default async function DashboardPage() {
   // braces so the component below can take a non-null user.
   if (!session.valid) return null;
 
+  // The whole portfolio, nested, rendered on the server. It is the heaviest
+  // query in the app and it is what every tile on both dashboards reads, so
+  // fetching it after hydration meant the landing page of the whole tool
+  // showed skeletons for a round trip it did not need to make.
+  //
+  // Snapshots and capacity weights are deliberately left to the browser: the
+  // tiles render without them (`snaps.data ?? []`, and the weights fall back
+  // to the documented defaults), they run in parallel with nothing, and both
+  // are cached for ten minutes.
   return (
-    <DashboardSwitch
-      role={session.user.role}
-      name={session.user.name}
-    />
+    <Hydrate queries={[clientTreesQuery()]}>
+      <DashboardSwitch role={session.user.role} name={session.user.name} />
+    </Hydrate>
   );
 }

@@ -1,14 +1,10 @@
 import { withAuth, json } from "@/lib/api/handler";
 import { forbidden } from "@/lib/api/errors";
-import {
-  listClients,
-  getClientTrees,
-  listArchivedClients,
-} from "@/lib/db/queries/clients";
+import { listArchivedClients } from "@/lib/db/queries/clients";
+import { loadClientList, loadClientTrees } from "@/lib/server/loaders";
 import { createClient } from "@/lib/db/mutations/clients";
 import { clientCreate } from "@/lib/validation/entities";
 import { created } from "@/lib/api/mutate";
-import { signAttachmentsIn } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -34,15 +30,12 @@ export const GET = withAuth({}, async ({ db, user, req }) => {
     return json({ clients: await listArchivedClients(db) });
   }
 
-  if (view === "tree") {
-    const clients = await getClientTrees(db);
-    // Signed once for the whole payload rather than per client — a tree can
-    // carry dozens of attachments and one round trip each would dominate.
-    const signed = await signAttachmentsIn(clients);
-    return json({ clients, signedAttachments: signed });
-  }
+  // Both bodies come from lib/server/loaders, which is also what the server
+  // components prefetch — so a screen that is hydrated on the server and the
+  // same screen fetching over HTTP cannot be handed different shapes.
+  if (view === "tree") return json(await loadClientTrees());
 
-  return json({ clients: await listClients(db) });
+  return json(await loadClientList());
 });
 
 /** POST /api/clients — create. Editors and above. */

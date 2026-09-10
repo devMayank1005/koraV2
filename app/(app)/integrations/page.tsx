@@ -1,5 +1,10 @@
 import { TrackerIndex } from "@/components/tracker-index";
+import { Hydrate, clientTreesQuery } from "@/lib/query/prefetch";
 
 export default function Page() {
-  return <TrackerIndex domain="integrations" />;
+  return (
+    <Hydrate queries={[clientTreesQuery()]}>
+      <TrackerIndex domain="integrations" />
+    </Hydrate>
+  );
 }

@@ -1,6 +1,7 @@
 import { PHASES } from "@/lib/domain/constants";
 import { notFound } from "next/navigation";
 import { PhaseDetailView } from "@/components/implementation/phase-view";
+import { Hydrate, clientTreeQuery } from "@/lib/query/prefetch";
 
 /**
  * Phase detail.
@@ -30,10 +31,12 @@ export default async function PhaseDetailPage({
   if (!PHASES.includes(phaseName as (typeof PHASES)[number])) notFound();
 
   return (
-    <PhaseDetailView
-      clientId={clientId}
-      moduleId={moduleId}
-      phaseName={phaseName}
-    />
+    <Hydrate queries={[clientTreeQuery(clientId)]}>
+      <PhaseDetailView
+        clientId={clientId}
+        moduleId={moduleId}
+        phaseName={phaseName}
+      />
+    </Hydrate>
   );
 }

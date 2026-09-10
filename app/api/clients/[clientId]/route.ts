@@ -3,9 +3,8 @@ import { updateClient, archiveClient } from "@/lib/db/mutations/clients";
 import { clientUpdate } from "@/lib/validation/entities";
 import { updated, removed } from "@/lib/api/mutate";
 import { notFound } from "@/lib/api/errors";
-import { getClientTree } from "@/lib/db/queries/clients";
 import { assertUserId } from "@/lib/auth/account";
-import { signAttachmentsIn } from "@/lib/storage";
+import { loadClientTree } from "@/lib/server/loaders";
 
 import { actorName } from "@/lib/api/actor";
 
@@ -13,14 +12,16 @@ export const runtime = "nodejs";
 
 export const GET = withAuth<{ clientId: string }>(
   {},
-  async ({ db, params }) => {
+  async ({ params }) => {
     // Same id format as everything else; validated before it reaches a query.
     const id = assertUserId(params.clientId);
 
-    const client = await getClientTree(db, id);
+    // Same loader the server components prefetch with — see
+    // lib/query/prefetch.tsx. The 404 is raised here rather than there
+    // because a route can say 404 and a cache entry cannot.
+    const { client } = await loadClientTree(id);
     if (!client) throw notFound("Client not found");
 
-    await signAttachmentsIn(client);
     return json({ client });
   },
 );

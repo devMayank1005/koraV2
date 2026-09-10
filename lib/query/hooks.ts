@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import {
+  hashKey,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { api } from "@/lib/api/fetcher";
 import { keys } from "./keys";
 import type { ClientSummary, ClientTree } from "@/lib/db/queries/clients";
@@ -43,15 +48,8 @@ import { DEFAULT_CAPACITY_WEIGHTS } from "@/lib/domain/constants";
  * clients and 702 phases the payload is small enough that this is simply
  * cheaper than being clever.
  */
-export function useClientTrees(
-  options: { enabled?: boolean } = {},
-): UseQueryResult<ClientTree[]> {
+export function useClientTrees(): UseQueryResult<ClientTree[]> {
   return useQuery({
-    // `enabled` exists for the command palette, which needs the tree to search
-    // but must not make every screen pay for it: the query only runs once the
-    // palette is opened, and by then it is usually already warm from the
-    // dashboard's own copy of this same cache entry.
-    enabled: options.enabled ?? true,
     queryKey: keys.clients.tree(),
     queryFn: () =>
       api<{ clients: ClientTree[]; signedAttachments: number }>(
@@ -75,11 +73,8 @@ export function useClientTrees(
  * making it wait on 702 phases would leave the most visible element on the
  * screen blank the longest.
  */
-export function useClientList(
-  options: { enabled?: boolean } = {},
-): UseQueryResult<ClientSummary[]> {
+export function useClientList(): UseQueryResult<ClientSummary[]> {
   return useQuery({
-    enabled: options.enabled ?? true,
     queryKey: keys.clients.list(),
     queryFn: () =>
       api<{ clients: ClientSummary[] }>("/api/clients").then((r) => r.clients),
@@ -123,11 +118,8 @@ export function useClient(
  * would let a viewer-facing screen reference `lockedUntil` and compile
  * cleanly, then render `undefined` in production.
  */
-export function useUsers(
-  options: { enabled?: boolean } = {},
-): UseQueryResult<(UserOption | UserAdminView)[]> {
+export function useUsers(): UseQueryResult<(UserOption | UserAdminView)[]> {
   return useQuery({
-    enabled: options.enabled ?? true,
     queryKey: keys.users.list(),
     queryFn: () =>
       api<{ users: (UserOption | UserAdminView)[] }>("/api/users").then(
@@ -227,29 +219,67 @@ export function useCapacityWeights(): CapacityWeights {
 /* --------------------------------------------------------------- cache-only */
 
 /**
- * Whatever is ALREADY cached, without ever issuing a request.
+ * Whatever is ALREADY cached, without creating the query — and THAT is the
+ * distinction that matters, not merely without fetching it.
  *
- * `enabled: false` is the whole point: the hook subscribes to a cache entry and
- * re-renders when it changes, but never fetches it itself. That makes it safe
- * in the app chrome, which renders on every route including ones that have no
- * business loading the client list — the breadcrumbs want a name to display,
- * not a reason to make a request.
+ * These hooks used to be `useQuery({ enabled: false })`, which does not issue a
+ * request but DOES build the cache entry: constructing a `QueryObserver` calls
+ * `queryCache.build()`, so an empty query with `dataUpdatedAt: 0` appears the
+ * moment the component renders. The breadcrumbs render in the app chrome, above
+ * every route, so `["clients","list"]` and `["clients","one",id]` existed before
+ * anything below had a chance to hydrate them.
+ *
+ * That quietly defeated server rendering. `HydrationBoundary` hydrates queries
+ * it finds MISSING during render, but defers ones that already exist to an
+ * effect — see its source: `newQueries` are hydrated inline, `existingQueries`
+ * in a `useEffect`. So the order became: breadcrumb builds an empty query →
+ * boundary sees it exists and defers → the rail mounts, finds no data, and
+ * fetches → the hydrated data lands 80ms later, having been in the HTML all
+ * along. Measured exactly that: `added` at t=3036 with no data, `fetch` at
+ * t=3115, hydration `setState` at t=3120.
+ *
+ * Reading the cache through `useSyncExternalStore` creates nothing. The
+ * subscription is filtered to one query hash so a breadcrumb does not re-render
+ * on every event in the cache.
+ */
+function useCachedData<T>(queryKey: readonly unknown[]): T | undefined {
+  const client = useQueryClient();
+  const hash = hashKey(queryKey);
+
+  const subscribe = useCallback(
+    (onStoreChange: () => void) =>
+      client.getQueryCache().subscribe((event) => {
+        if (event.query.queryHash === hash) onStoreChange();
+      }),
+    [client, hash],
+  );
+
+  return useSyncExternalStore(
+    subscribe,
+    // `getQueryData` returns `state.data` by reference, so this is stable
+    // between changes, which is what useSyncExternalStore requires.
+    () => client.getQueryData<T>(queryKey),
+    // Server snapshot: nothing is cached during SSR, and the breadcrumb's
+    // fallback is the id, which renders identically on both sides.
+    () => undefined,
+  );
+}
+
+/**
+ * Client names from the cache, for the breadcrumbs.
  *
  * Returns an empty map until something else populates the cache, so callers
- * must have a fallback. On the tracker screens the rail has already fetched it
- * and the name is there on first paint; on `/admin` it stays empty and the
- * breadcrumb keeps showing the id, which is correct — a label is not worth a
- * round trip.
+ * must have a fallback. On the tracker screens the layout has already
+ * server-rendered the list and the name is there on first paint; on `/admin` it
+ * stays empty and the breadcrumb keeps showing the id, which is correct — a
+ * label is not worth a round trip.
  */
 export function useCachedClientNames(): Map<string, string> {
-  const { data } = useQuery({
-    queryKey: keys.clients.list(),
-    queryFn: () =>
-      api<{ clients: ClientSummary[] }>("/api/clients").then((r) => r.clients),
-    enabled: false,
-    staleTime: Infinity,
-  });
-  return new Map((data ?? []).map((c) => [c.id, c.name]));
+  const data = useCachedData<ClientSummary[]>(keys.clients.list());
+  return useMemo(
+    () => new Map((data ?? []).map((c) => [c.id, c.name])),
+    [data],
+  );
 }
 
 /**
@@ -259,18 +289,12 @@ export function useCachedClientNames(): Map<string, string> {
 export function useCachedChildNames(
   clientId: string | undefined,
 ): Map<string, string> {
-  const { data } = useQuery({
-    queryKey: keys.clients.one(clientId ?? ""),
-    queryFn: () =>
-      api<{ client: ClientTree }>(
-        `/api/clients/${encodeURIComponent(clientId!)}`,
-      ).then((r) => r.client),
-    enabled: false,
-    staleTime: Infinity,
-  });
+  const data = useCachedData<ClientTree>(keys.clients.one(clientId ?? ""));
 
-  const names = new Map<string, string>();
-  for (const i of data?.integrations ?? []) names.set(i.id, i.name);
-  for (const m of data?.modules ?? []) names.set(m.id, m.name);
-  return names;
+  return useMemo(() => {
+    const names = new Map<string, string>();
+    for (const i of data?.integrations ?? []) names.set(i.id, i.name);
+    for (const m of data?.modules ?? []) names.set(m.id, m.name);
+    return names;
+  }, [data]);
 }

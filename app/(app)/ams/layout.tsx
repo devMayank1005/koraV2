@@ -1,9 +1,9 @@
-import { TrackerShell } from "@/components/tracker-shell";
+import { TrackerFrame } from "@/components/tracker-frame";
 
 export default function AMSSupportLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <TrackerShell domain="ams">{children}</TrackerShell>;
+  return <TrackerFrame domain="ams">{children}</TrackerFrame>;
 }

@@ -9,6 +9,34 @@ import { useSession } from "@/lib/query/permissions";
 import { STATUS_COLORS } from "@/lib/domain/constants";
 
 /**
+ * NOT MOUNTED UNTIL IT IS OPENED, and that is a data decision rather than a
+ * rendering one.
+ *
+ * The palette lives in the app chrome, so it renders above every route. Its
+ * three queries were gated with `enabled: false`, which does not fetch — but
+ * DOES create the cache entry, because constructing a `QueryObserver` calls
+ * `queryCache.build()`. An entry that exists but holds no data is exactly what
+ * makes `HydrationBoundary` defer: it hydrates missing queries during render
+ * and existing ones in an effect, and effects do not run during SSR. So the
+ * server rendered the client rail empty while the browser rendered it full, the
+ * hydration mismatch threw away the server HTML, and every screen below fetched
+ * over HTTP data that had already arrived with the document.
+ *
+ * Returning null is the whole fix. No observer, no cache entry, nothing to
+ * defer — and three fewer subscriptions on every page.
+ */
+export function CommandPalette({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!open) return null;
+  return <PaletteDialog onOpenChange={onOpenChange} />;
+}
+
+/**
  * The ⌘K command palette (artboard 1h).
  *
  * The trigger for this has been in the sidebar since the shell was built, with
@@ -24,11 +52,9 @@ import { STATUS_COLORS } from "@/lib/domain/constants";
  * of the previous commit; re-introducing it on every page to power a search box
  * nobody has opened would have undone it.
  */
-export function CommandPalette({
-  open,
+function PaletteDialog({
   onOpenChange,
 }: {
-  open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
@@ -36,14 +62,12 @@ export function CommandPalette({
   const session = useSession();
   const isAdmin = session?.role === "admin";
 
-  // ALL THREE ARE GATED ON `open`. Only the tree was, in the commit that added
-  // this component, so mounting the palette in AppChrome quietly put an
-  // /api/users request — and a client-list one — on every navigation in the
-  // app, for a panel nobody had opened. Against a remote database that is a
-  // whole round trip per page load spent on nothing.
-  const clients = useClientList({ enabled: open });
-  const trees = useClientTrees({ enabled: open });
-  const users = useUsers({ enabled: open });
+  // Unconditional, because this component only exists while the palette is
+  // open. That replaces the `enabled: open` gate above it, which stopped the
+  // requests but not the cache entries — see the note on CommandPalette.
+  const clients = useClientList();
+  const trees = useClientTrees();
+  const users = useUsers();
 
   // Reset on the way out rather than in an effect watching `open`: a setState
   // in an effect body cascades a render, and React 19 lints it.
@@ -57,10 +81,10 @@ export function CommandPalette({
       buildResults({
         query,
         clients: clients.data ?? [],
-        trees: open ? (trees.data ?? []) : [],
+        trees: trees.data ?? [],
         users: isAdmin ? (users.data ?? []) : [],
       }),
-    [query, clients.data, trees.data, users.data, isAdmin, open],
+    [query, clients.data, trees.data, users.data, isAdmin],
   );
 
   function go(href: string) {
@@ -70,7 +94,7 @@ export function CommandPalette({
 
   return (
     <Command.Dialog
-      open={open}
+      open
       onOpenChange={setOpen}
       label="Search Kora"
       // Ranking is ours (see buildResults) — cmdk's own fuzzy filter would

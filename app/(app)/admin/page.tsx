@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
-import { getDb } from "@/lib/db/client";
 import { getCurrentSession } from "@/lib/auth/current-session";
-import { listUsersForAdmin } from "@/lib/db/queries/users";
+import { loadUsers } from "@/lib/server/loaders";
+import {
+  Hydrate,
+  clientListQuery,
+  resolved,
+  usersQuery,
+} from "@/lib/query/prefetch";
 import { AdminScreen } from "@/components/admin/admin-screen";
 
 /**
@@ -20,13 +25,19 @@ export default async function AdminPage() {
   // Shared with the layout's lookup for this request; the ordering hazard this
   // used to guard now lives in current-session.ts.
   const session = await getCurrentSession();
-  const db = getDb();
   if (!session.valid) redirect("/login");
   if (session.user.role !== "admin") redirect("/dashboard");
 
-  // Only the count is read here — the table itself is a client query so it can
-  // refetch after every mutation without a full page round trip.
-  const users = await listUsersForAdmin(db);
+  // ONE query for two purposes. This page has always read the user list for
+  // its heading count; the table below then asked for the same list again over
+  // HTTP after hydrating. `resolved` hands the rows it already has to the
+  // client cache under the table's own key, so the second request disappears
+  // without the count needing its own query.
+  const { users } = await loadUsers(session.user.role);
 
-  return <AdminScreen userCount={users.length} />;
+  return (
+    <Hydrate queries={[resolved(usersQuery(session.user.role), users), clientListQuery()]}>
+      <AdminScreen userCount={users.length} />
+    </Hydrate>
+  );
 }

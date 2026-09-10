@@ -2,7 +2,7 @@ import { withAuth, json } from "@/lib/api/handler";
 import { createUser } from "@/lib/db/mutations/users";
 import { userCreate } from "@/lib/validation/entities";
 import { created } from "@/lib/api/mutate";
-import { listUsers } from "@/lib/db/queries/users";
+import { loadUsers } from "@/lib/server/loaders";
 
 export const runtime = "nodejs";
 
@@ -12,8 +12,8 @@ export const runtime = "nodejs";
  * validateSession, which reads it fresh from the database, so a demotion takes
  * effect here immediately.
  */
-export const GET = withAuth({}, async ({ db, user }) =>
-  json({ users: await listUsers(db, user.role) }),
+export const GET = withAuth({}, async ({ user }) =>
+  json(await loadUsers(user.role)),
 );
 
 /** POST /api/users — admin only. Plaintext in, bcrypt cost 12 stored. */
