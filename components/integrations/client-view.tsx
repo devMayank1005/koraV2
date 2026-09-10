@@ -58,7 +58,10 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
     return c;
   }, [all]);
 
-  const shown = filter === "all" ? all : all.filter((i) => i.status === filter);
+  const shown = useMemo(
+    () => (filter === "all" ? all : all.filter((i) => i.status === filter)),
+    [all, filter],
+  );
 
   // Chips in STATUSES order, not alphabetical. That array is the app's
   // canonical status order — it already drives the very `InlineSelect` in the
@@ -69,7 +72,10 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
     [counts],
   );
 
-  const rag = client ? integRagLabel(client) : null;
+  // `integRagLabel` is three full passes over every integration, and each pass
+  // calls isOverdue/isStale, which allocate two Dates apiece. Unmemoized it ran
+  // on every render of this screen.
+  const rag = useMemo(() => (client ? integRagLabel(client) : null), [client]);
   const staleCount = useMemo(() => all.filter((i) => isStale(i)).length, [all]);
 
   return (
@@ -126,9 +132,8 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                     {
                       label: "Integration Report (PDF)",
                       run: async () => {
-                        const { exportIntegrationPdf } = await import(
-                          "@/lib/export/integration-pdf"
-                        );
+                        const { exportIntegrationPdf } =
+                          await import("@/lib/export/integration-pdf");
                         await exportIntegrationPdf(client);
                         toast.success("Report downloaded.");
                       },
@@ -144,7 +149,8 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                     {
                       label: "Excel (Integrations)",
                       run: async () => {
-                        const { exportClientExcel } = await import("@/lib/export/excel");
+                        const { exportClientExcel } =
+                          await import("@/lib/export/excel");
                         await exportClientExcel("integrations", client);
                         toast.success("Spreadsheet downloaded.");
                       },
@@ -160,7 +166,8 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                         ? undefined
                         : "none yet",
                       run: async () => {
-                        const { exportClientExcel } = await import("@/lib/export/excel");
+                        const { exportClientExcel } =
+                          await import("@/lib/export/excel");
                         await exportClientExcel("milestones", client);
                         toast.success("Spreadsheet downloaded.");
                       },
@@ -188,12 +195,19 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
               />
             )}
 
-            <AddIntegrationDialog
-              clientId={clientId}
-              clientName={client.name}
-              open={adding}
-              onOpenChange={setAdding}
-            />
+            {/* MOUNTED ONLY WHEN OPEN. Rendered unconditionally it still ran
+                its own useAssigneeOptions — a second observer on the user
+                query — plus a useCreateEntity mutation, on a screen where the
+                dialog is shut the overwhelming majority of the time. The
+                ClientEmailDialog above already guards itself this way. */}
+            {adding && (
+              <AddIntegrationDialog
+                clientId={clientId}
+                clientName={client.name}
+                open={adding}
+                onOpenChange={setAdding}
+              />
+            )}
 
             {/* Status filter chips — new in the reskin; the old app had no
                 way to narrow this table at all. */}
@@ -324,7 +338,10 @@ function StatusMix({ rows }: { rows: Integration[] }) {
   return (
     <div className="k-card min-w-[260px] flex-1 px-4 py-3.5">
       <h2 className="k-eyebrow">Status mix</h2>
-      <div className="my-3 flex h-2 gap-0.5 overflow-hidden rounded-full" aria-hidden>
+      <div
+        className="my-3 flex h-2 gap-0.5 overflow-hidden rounded-full"
+        aria-hidden
+      >
         {present.map((p) => (
           <div key={p.status} style={{ flex: p.count, background: p.fill }} />
         ))}
@@ -386,22 +403,34 @@ function IntegrationTable({
             dropping either of ours would take real data off the screen.
             `table-layout` is auto, so these are hints: a column whose content
             genuinely will not fit still expands rather than clipping. */}
+        {/* PROPORTIONAL, not one flexible column and six fixed ones.
+            The Integration column used to be a bare `<col />`, so it absorbed
+            every pixel of slack: on a 1124px table it took 544px to hold a
+            90px title, leaving a canyon before Status — while Status and
+            Assignee, pinned at 130 and 118, truncated their own selects to
+            "On Hold —" and "Kavya (r". Percentages let all six grow together,
+            so the gap after a title stays in proportion at any width and the
+            controls stop being clipped. */}
         <colgroup>
-          <col />
-          <col style={{ width: 130 }} />
-          <col style={{ width: 118 }} />
-          <col style={{ width: 96 }} />
-          <col style={{ width: 100 }} />
-          <col style={{ width: 92 }} />
+          <col style={{ width: "34%" }} />
+          <col style={{ width: "15%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "13%" }} />
           {canEdit && <col style={{ width: 44 }} />}
         </colgroup>
         <thead>
           <tr className="k-thead">
-            <th className="px-4 py-[9px] text-left font-semibold">Integration</th>
+            <th className="px-4 py-[9px] text-left font-semibold">
+              Integration
+            </th>
             <th className="px-4 py-[9px] text-left font-semibold">Status</th>
             <th className="px-4 py-[9px] text-left font-semibold">Assignee</th>
             <th className="px-4 py-[9px] text-left font-semibold">Due</th>
-            <th className="px-4 py-[9px] text-left font-semibold">Milestones</th>
+            <th className="px-4 py-[9px] text-left font-semibold">
+              Milestones
+            </th>
             <th className="px-4 py-[9px] text-left font-semibold">Updated</th>
             {canEdit && <th className="px-4 py-[9px]" />}
           </tr>
@@ -475,7 +504,9 @@ function IntegrationTable({
                       before={i}
                     />
                   ) : (
-                    i.assignee || <span className="text-k-mute">Unassigned</span>
+                    i.assignee || (
+                      <span className="text-k-mute">Unassigned</span>
+                    )
                   )}
                 </td>
                 <td className="px-4 py-[11px]">
@@ -486,7 +517,9 @@ function IntegrationTable({
                     // the row to half again its designed height.
                     <span
                       className={`k-mono whitespace-nowrap text-[11px] ${
-                        overdue ? "font-semibold text-k-text-red" : "text-k-ink-3"
+                        overdue
+                          ? "font-semibold text-k-text-red"
+                          : "text-k-ink-3"
                       }`}
                     >
                       {fmtDate(i.dueDate)}

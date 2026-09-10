@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
-import { getDb } from "@/lib/db/client";
-import { readSessionCookie } from "@/lib/auth/cookies";
-import { validateSession } from "@/lib/auth/session";
+import { getCurrentSession } from "@/lib/auth/current-session";
 import { AppChrome } from "@/components/app-chrome";
 
 /**
@@ -38,9 +36,10 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Cookie FIRST. See the note above: this ordering is load-bearing.
-  const token = await readSessionCookie();
-  const session = await validateSession(getDb(), token);
+  // One session lookup per request, shared with every page below via
+  // React.cache — see lib/auth/current-session.ts, which also owns the
+  // cookie-before-handle ordering this comment used to guard here.
+  const session = await getCurrentSession();
 
   if (!session.valid) {
     // The proxy normally catches this first; reaching here means the session

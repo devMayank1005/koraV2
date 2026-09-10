@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { useUsers } from "./hooks";
 import { useUi } from "@/lib/store/ui";
 
@@ -77,8 +77,15 @@ export function isReadOnlyBuild(): boolean {
  */
 export function useAssigneeOptions(current?: string | null): string[] {
   const { data } = useUsers();
-  const names = (data ?? []).map((u) => u.name).filter(Boolean).sort();
-  const out = ["", ...names];
-  if (current && !out.includes(current)) out.push(current);
-  return out;
+  // MEMOIZED because the identity is load-bearing downstream: this array is
+  // passed as `options` to every assignee select in a table, so a fresh array
+  // on every render meant a changed prop on all sixty of them each time
+  // anything on the screen re-rendered. `.sort()` on a fresh `.map()` is safe —
+  // it is not mutating the query cache — but it was running every render too.
+  return useMemo(() => {
+    const names = (data ?? []).map((u) => u.name).filter(Boolean).sort();
+    const out = ["", ...names];
+    if (current && !out.includes(current)) out.push(current);
+    return out;
+  }, [data, current]);
 }

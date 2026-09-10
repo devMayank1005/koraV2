@@ -36,9 +36,14 @@ export function CommandPalette({
   const session = useSession();
   const isAdmin = session?.role === "admin";
 
-  const clients = useClientList();
+  // ALL THREE ARE GATED ON `open`. Only the tree was, in the commit that added
+  // this component, so mounting the palette in AppChrome quietly put an
+  // /api/users request — and a client-list one — on every navigation in the
+  // app, for a panel nobody had opened. Against a remote database that is a
+  // whole round trip per page load spent on nothing.
+  const clients = useClientList({ enabled: open });
   const trees = useClientTrees({ enabled: open });
-  const users = useUsers();
+  const users = useUsers({ enabled: open });
 
   // Reset on the way out rather than in an effect watching `open`: a setState
   // in an effect body cascades a render, and React 19 lints it.

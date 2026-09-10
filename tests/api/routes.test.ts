@@ -542,11 +542,17 @@ describe("authenticated pages are never prerendered", () => {
     // BODY — a first version searched the whole file and matched the import on
     // line 2 and the explanatory comment on line 29, so it failed while the
     // code was correct.
+    //
+    // It now points at lib/auth/current-session.ts rather than the layout: the
+    // layout, the dashboard and the admin page all used to repeat this pair,
+    // and the session lookup was consolidated there so one request makes one
+    // query. The invariant did not go away, it moved — and it is now asserted
+    // in the single place it can be got wrong.
     const src = fs.readFileSync(
-      path.resolve(process.cwd(), "app/(app)/layout.tsx"),
+      path.resolve(process.cwd(), "lib/auth/current-session.ts"),
       "utf8",
     );
-    const body = src.slice(src.indexOf("export default async function AppLayout"));
+    const body = src.slice(src.indexOf("export const getCurrentSession"));
 
     const cookieAt = body.indexOf("readSessionCookie()");
     const dbAt = body.indexOf("getDb()");

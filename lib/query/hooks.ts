@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { api } from "@/lib/api/fetcher";
 import { keys } from "./keys";
@@ -74,8 +75,11 @@ export function useClientTrees(
  * making it wait on 702 phases would leave the most visible element on the
  * screen blank the longest.
  */
-export function useClientList(): UseQueryResult<ClientSummary[]> {
+export function useClientList(
+  options: { enabled?: boolean } = {},
+): UseQueryResult<ClientSummary[]> {
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: keys.clients.list(),
     queryFn: () =>
       api<{ clients: ClientSummary[] }>("/api/clients").then((r) => r.clients),
@@ -95,6 +99,11 @@ export function useClient(
   return useQuery({
     queryKey: keys.clients.one(clientId ?? ""),
     enabled: Boolean(clientId),
+    // A full client tree, behind all five detail screens, and it was still
+    // inheriting the global 60s interval — so every open tab re-pulled it every
+    // minute and re-rendered the screen, which on a remote database is a round
+    // trip per tab per minute for data that changes on human timescales.
+    refetchInterval: false,
     queryFn: () =>
       api<{ client: ClientTree }>(
         `/api/clients/${encodeURIComponent(clientId!)}`,
@@ -114,8 +123,11 @@ export function useClient(
  * would let a viewer-facing screen reference `lockedUntil` and compile
  * cleanly, then render `undefined` in production.
  */
-export function useUsers(): UseQueryResult<(UserOption | UserAdminView)[]> {
+export function useUsers(
+  options: { enabled?: boolean } = {},
+): UseQueryResult<(UserOption | UserAdminView)[]> {
   return useQuery({
+    enabled: options.enabled ?? true,
     queryKey: keys.users.list(),
     queryFn: () =>
       api<{ users: (UserOption | UserAdminView)[] }>("/api/users").then(
@@ -200,7 +212,16 @@ export function useCapacityWeights(): CapacityWeights {
     staleTime: 10 * 60_000,
     refetchInterval: false,
   });
-  return { ...DEFAULT_CAPACITY_WEIGHTS, ...(data ?? {}) };
+  // MEMOIZED, and this one matters far more than it looks. The admin dashboard
+  // lists `weights` in the dependency array of the memo that computes every
+  // portfolio aggregate — healthRows, buildCriticalItems, teamBandwidth and
+  // seven more, over the whole tree. Returning a fresh object here made that
+  // dependency change on every render, so the memo never hit and all of it
+  // re-ran on every keystroke, hover and poll.
+  return useMemo(
+    () => ({ ...DEFAULT_CAPACITY_WEIGHTS, ...(data ?? {}) }),
+    [data],
+  );
 }
 
 /* --------------------------------------------------------------- cache-only */

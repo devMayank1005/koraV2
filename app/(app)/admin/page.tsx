@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db/client";
-import { readSessionCookie } from "@/lib/auth/cookies";
-import { validateSession } from "@/lib/auth/session";
+import { getCurrentSession } from "@/lib/auth/current-session";
 import { listUsersForAdmin } from "@/lib/db/queries/users";
 import { AdminScreen } from "@/components/admin/admin-screen";
 
@@ -18,13 +17,10 @@ import { AdminScreen } from "@/components/admin/admin-screen";
  * lock yourself out of the tool you are previewing from.
  */
 export default async function AdminPage() {
-  // Cookie FIRST. Argument evaluation is left to right, so
-  // `validateSession(getDb(), await readSessionCookie())` reaches `getDb()`
-  // before the await — the exact hazard the (app) layout documents and avoids.
-  // This route only escaped it by inheriting that layout's `force-dynamic`.
-  const token = await readSessionCookie();
+  // Shared with the layout's lookup for this request; the ordering hazard this
+  // used to guard now lives in current-session.ts.
+  const session = await getCurrentSession();
   const db = getDb();
-  const session = await validateSession(db, token);
   if (!session.valid) redirect("/login");
   if (session.user.role !== "admin") redirect("/dashboard");
 

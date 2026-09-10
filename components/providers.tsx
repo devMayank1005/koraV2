@@ -39,7 +39,18 @@ function makeQueryClient() {
         networkMode: "always",
         // A client tree is expensive to build and changes on human timescales.
         staleTime: 30_000,
-        refetchInterval: 60_000,
+        // NO GLOBAL POLLING. This used to be `refetchInterval: 60_000`, which
+        // every query inherited unless it opted out — and the ones that had not
+        // opted out were the heaviest: the per-client tree behind every detail
+        // screen, the client list behind every rail, and the user list. Three
+        // requests a minute per open tab, each one changing object identity and
+        // re-running every aggregate downstream of it.
+        //
+        // Polling is now opt-in per query. `refetchOnWindowFocus` below still
+        // catches the case this was really for — someone coming back to a tab
+        // and acting on stale numbers — and it respects `staleTime`, which an
+        // interval does not.
+        refetchInterval: false,
         // The old app had no equivalent; coming back to a stale tab and acting
         // on week-old numbers is exactly how two people overwrite each other.
         refetchOnWindowFocus: true,
