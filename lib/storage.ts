@@ -38,13 +38,24 @@ export async function signPaths(
 
   const bucket = storage().from(BUCKET);
 
+  // `createSignedUrls` RESOLVES with `{ data, error }` — it does not throw on an
+  // API-level failure, so the `try/catch` that used to wrap this could never
+  // fire for the case it was written for. A bad key, a missing bucket or a
+  // network blip left `data` null, `out` empty, and every path therefore
+  // "missing" — turning one bulk call into N individual round trips to remote
+  // storage on every read of every client. The error is checked explicitly now,
+  // and the fallback below is left for the genuinely-missing-path case it was
+  // meant for.
   try {
-    const { data } = await bucket.createSignedUrls(unique, expiresIn);
+    const { data, error } = await bucket.createSignedUrls(unique, expiresIn);
+    if (error) {
+      console.error("[storage] bulk signing failed", error.message);
+    }
     for (const row of data ?? []) {
       if (row.signedUrl && row.path) out.set(row.path, row.signedUrl);
     }
-  } catch {
-    // Fall through to per-path signing below.
+  } catch (err) {
+    console.error("[storage] bulk signing threw", err);
   }
 
   const missing = unique.filter((p) => !out.has(p));

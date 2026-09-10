@@ -25,8 +25,16 @@ import * as schema from "./schema";
 export type Db = ReturnType<typeof createDb>;
 
 function createDb(url: string) {
+  // POOL SIZE IS NOT A CONSTANT — it depends on what is on the other end.
+  // `max: 1` is correct behind Supavisor's transaction pooler, which is itself
+  // the pool and hands out its own connections. Against a direct Postgres in a
+  // long-lived server it is a bottleneck: every concurrent request in a page
+  // load queues on one socket, and one page load makes ~13 queries. Locally
+  // that is invisible at 1 ms a query; against anything remote it serialises.
+  const pooled = /pooler\.supabase\.com|supavisor|pgbouncer/.test(url);
+
   const sql = postgres(url, {
-    max: 1,
+    max: pooled ? 1 : 8,
     prepare: false,
     idle_timeout: 20,
     connect_timeout: 10,

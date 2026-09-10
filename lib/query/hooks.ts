@@ -49,6 +49,14 @@ export function useClientTrees(): UseQueryResult<ClientTree[]> {
       api<{ clients: ClientTree[]; signedAttachments: number }>(
         "/api/clients?view=tree",
       ).then((r) => r.clients),
+    // THE HEAVIEST QUERY IN THE APP, and the only one that was still inheriting
+    // the global 60s `refetchInterval` — `useSnapshots` and
+    // `useCapacityWeights` both opted out. Measured at 95 kB, so every open tab
+    // was pulling that once a minute forever, and each arrival re-ran every
+    // dashboard aggregate over the whole portfolio because the array identity
+    // changed. `refetchOnWindowFocus` still refreshes it when someone actually
+    // comes back to the tab, which is when a stale number would matter.
+    refetchInterval: false,
   });
 }
 
@@ -136,11 +144,25 @@ export function useUserNames(): Map<string, string> {
  * interfaces genuinely differ, so leaving it unmapped is a type error rather
  * than a blank trend column.
  */
+/** The oldest snapshot date the trend arrows can use: a fortnight back. */
+function snapshotWindowStart(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 14);
+  return d.toISOString().slice(0, 10);
+}
+
 export function useSnapshots(): UseQueryResult<DomainSnapshotRow[]> {
   return useQuery({
     queryKey: keys.snapshots.list(),
     queryFn: () =>
-      api<{ rows: DbSnapshotRow[] }>("/api/snapshots").then((r) =>
+      // BOUNDED. The cron appends one row per client per night forever, and
+      // this asked for all of history to draw one arrow per client. The trend
+      // only ever compares the newest snapshot with the oldest in its window,
+      // so a fortnight is all `healthRows` can use — and it keeps the payload
+      // flat over time instead of growing without limit.
+      api<{ rows: DbSnapshotRow[] }>(
+        `/api/snapshots?from=${snapshotWindowStart()}`,
+      ).then((r) =>
         r.rows.map((s) => ({
           client_id: s.clientId,
           snapshot_date: s.snapshotDate,

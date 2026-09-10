@@ -18,8 +18,13 @@ import { AdminScreen } from "@/components/admin/admin-screen";
  * lock yourself out of the tool you are previewing from.
  */
 export default async function AdminPage() {
+  // Cookie FIRST. Argument evaluation is left to right, so
+  // `validateSession(getDb(), await readSessionCookie())` reaches `getDb()`
+  // before the await — the exact hazard the (app) layout documents and avoids.
+  // This route only escaped it by inheriting that layout's `force-dynamic`.
+  const token = await readSessionCookie();
   const db = getDb();
-  const session = await validateSession(db, await readSessionCookie());
+  const session = await validateSession(db, token);
   if (!session.valid) redirect("/login");
   if (session.user.role !== "admin") redirect("/dashboard");
 
