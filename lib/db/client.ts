@@ -9,8 +9,6 @@ import * as schema from "./schema";
  * which imposes two things:
  *
  *   prepare: false   transaction mode does not support prepared statements
- *   max: 1           one connection per serverless instance; the pooler
- *                    multiplexes, and the free tier's backend pool is small
  *
  * TLS must be stated explicitly. postgres.js does not infer it from the URL,
  * and without it Supabase's pooler rejects the handshake and reports
@@ -25,16 +23,37 @@ import * as schema from "./schema";
 export type Db = ReturnType<typeof createDb>;
 
 function createDb(url: string) {
-  // POOL SIZE IS NOT A CONSTANT — it depends on what is on the other end.
-  // `max: 1` is correct behind Supavisor's transaction pooler, which is itself
-  // the pool and hands out its own connections. Against a direct Postgres in a
-  // long-lived server it is a bottleneck: every concurrent request in a page
-  // load queues on one socket, and one page load makes ~13 queries. Locally
-  // that is invisible at 1 ms a query; against anything remote it serialises.
+  /**
+   * POOL SIZE IS NOT A CONSTANT — it depends on what is on the other end, and
+   * `max: 1` behind the pooler was costing more than it saved.
+   *
+   * The reasoning for 1 was that Supavisor is itself the pool, so the client
+   * needs only one connection. That is true of connection COUNT and wrong about
+   * latency: `max` also caps how many queries one request may have in flight.
+   * `getClientTrees` deliberately issues SIX queries in a single `Promise.all`
+   * — one per table, assembled in memory, because walking the tree per client
+   * is the whole response time — and `getClientTree` runs the same six for one
+   * client, which is the query behind every detail screen. With `max: 1` those
+   * six queue on one socket and run strictly serially.
+   *
+   * Measured, six parallel queries against the local Postgres with `pg_sleep`
+   * standing in for a remote round trip:
+   *
+   *     per query   max:1    max:2    max:4    max:8
+   *        10 ms     74 ms    44 ms    35 ms    23 ms
+   *        30 ms    189 ms   104 ms    75 ms    45 ms
+   *
+   * So on a remote pooler `max: 1` was adding roughly 100 ms to every screen
+   * that loads a client, for nothing. Four is the compromise: it collapses the
+   * six into two rounds, and it is still a small enough per-instance footprint
+   * that Supavisor's backend pool is not the thing under pressure. Higher is
+   * faster here and worse under concurrency, which is not a trade to make
+   * blind — this one is measured, the next one needs production numbers.
+   */
   const pooled = /pooler\.supabase\.com|supavisor|pgbouncer/.test(url);
 
   const sql = postgres(url, {
-    max: pooled ? 1 : 8,
+    max: pooled ? 4 : 8,
     prepare: false,
     idle_timeout: 20,
     connect_timeout: 10,
