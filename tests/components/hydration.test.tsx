@@ -171,4 +171,63 @@ describe("server-rendered data reaches the screen without a request", () => {
     expect(screen.getByText("Cactus & Life Sciences")).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("does not notify the chrome while another component is rendering", () => {
+    // The shape that produces it in the app: the breadcrumbs are ALREADY
+    // subscribed to a client's tree when you navigate to another client, and
+    // the new page's HydrationBoundary hydrates during render. Cache events are
+    // synchronous, so an unbatched subscriber calls setState on the breadcrumbs
+    // mid-render — "Cannot update a component (RouteBreadcrumbs) while
+    // rendering a different component (HydrationBoundary)", plus an extra
+    // render pass every navigation. Mounting and hydrating in one pass does not
+    // reproduce it, because nothing is subscribed yet; this mounts first.
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    });
+
+    const server = new QueryClient();
+    server.setQueryData(keys.clients.one("c1"), { id: "c1", integrations: [], modules: [] });
+    const state = dehydrate(server);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { staleTime: 30_000, retry: false } },
+    });
+
+    function Breadcrumbs() {
+      useCachedChildNames("c1");
+      return <span>crumb</span>;
+    }
+    function Body() {
+      return <span>body</span>;
+    }
+
+    // 1. The chrome mounts and subscribes. Nothing is in the cache.
+    const { rerender } = render(
+      wrap(
+        client,
+        <>
+          <Breadcrumbs />
+          <Body />
+        </>,
+      ),
+    );
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+
+    // 2. Navigation: a boundary appears below it and hydrates during render.
+    rerender(
+      wrap(
+        client,
+        <>
+          <Breadcrumbs />
+          <HydrationBoundary state={state}>
+            <Body />
+          </HydrationBoundary>
+        </>,
+      ),
+    );
+
+    expect(client.getQueryData(keys.clients.one("c1"))).toBeDefined();
+    expect(errors.join("\n")).not.toContain("Cannot update a component");
+  });
 });

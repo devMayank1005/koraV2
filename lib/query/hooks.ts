@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import {
   hashKey,
+  notifyManager,
   useQuery,
   useQueryClient,
   type UseQueryResult,
@@ -241,6 +242,16 @@ export function useCapacityWeights(): CapacityWeights {
  * Reading the cache through `useSyncExternalStore` creates nothing. The
  * subscription is filtered to one query hash so a breadcrumb does not re-render
  * on every event in the cache.
+ *
+ * THE NOTIFICATION IS BATCHED, and it has to be. Cache events fire
+ * SYNCHRONOUSLY during another component's render — `HydrationBoundary`
+ * hydrates in a `useMemo`, and building a query observer emits `added` while
+ * the component that owns it is rendering. Calling `onStoreChange` straight
+ * from there is a setState during someone else's render, which React reports as
+ * "Cannot update a component (RouteBreadcrumbs) while rendering a different
+ * component (HydrationBoundary)" and pays for with an extra render pass.
+ * `notifyManager.batchCalls` is exactly what React Query's own `useBaseQuery`
+ * wraps its subscriber in, for exactly this reason.
  */
 function useCachedData<T>(queryKey: readonly unknown[]): T | undefined {
   const client = useQueryClient();
@@ -248,9 +259,11 @@ function useCachedData<T>(queryKey: readonly unknown[]): T | undefined {
 
   const subscribe = useCallback(
     (onStoreChange: () => void) =>
-      client.getQueryCache().subscribe((event) => {
-        if (event.query.queryHash === hash) onStoreChange();
-      }),
+      client.getQueryCache().subscribe(
+        notifyManager.batchCalls((event) => {
+          if (event.query.queryHash === hash) onStoreChange();
+        }),
+      ),
     [client, hash],
   );
 
