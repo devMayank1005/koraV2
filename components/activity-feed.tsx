@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Paperclip, Pencil, History, Trash2 } from "lucide-react";
 import { AVATAR_PALETTE } from "@/lib/domain/constants";
+import { initials } from "@/lib/utils/people";
 import { fmtDate, fmtDateTime } from "@/lib/utils/dates";
 import { EmptyState } from "@/components/ui/states";
 import { ActivityComposer, useActivityItemMutations } from "@/components/activity-composer";
@@ -240,14 +241,6 @@ function AttachmentLink({
  * — the handoff forbids it — so initials it is.
  */
 export function Avatar({ name, size = 26 }: { name: string; size?: number }) {
-  const initials =
-    (name || "?")
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((w) => w[0]?.toUpperCase() ?? "")
-      .join("") || "?";
-
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
   const bg = AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
@@ -258,7 +251,7 @@ export function Avatar({ name, size = 26 }: { name: string; size?: number }) {
       className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
       style={{ width: size, height: size, background: bg, fontSize: size * 0.4 }}
     >
-      {initials}
+      {initials(name)}
     </span>
   );
 }

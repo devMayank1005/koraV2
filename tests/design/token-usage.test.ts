@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { STATUS_CELL, STATUSES } from "@/lib/domain/constants";
 
 /**
  * Are the design tokens used for what they are FOR?
@@ -192,18 +193,29 @@ describe("implementation matrix status colours", () => {
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");
 
-  const fills = [...code.matchAll(/const (SIGNED_FILL|WIP_FILL) = "([^"]+)"/g)];
+  /**
+   * The colours moved out of this file into `STATUS_CELL`, so the assertion
+   * moved with them. The two constants this used to name are gone; keeping
+   * them alive purely to satisfy a test would have been the tail wagging the
+   * dog. What the test is FOR is unchanged: no frozen light-mode colour
+   * anywhere near the matrix.
+   */
+  it("gives every status a themed ground and a themed label", () => {
+    const entries = Object.entries(STATUS_CELL);
 
-  it("finds the fill constants at all (the scan itself works)", () => {
-    // Without this the assertions below pass vacuously the day someone renames
-    // the constants or moves them to another module.
-    expect(fills.map((m) => m[1]).sort()).toEqual(["SIGNED_FILL", "WIP_FILL"]);
-  });
+    // Without this the assertion below passes vacuously the day the map is
+    // renamed or emptied.
+    expect(entries.length).toBe(STATUSES.length);
+    expect(Object.keys(STATUS_CELL).sort()).toEqual([...STATUSES].sort());
 
-  it("draws every status mark from a token, so dark mode flips all four", () => {
-    const frozen = fills
-      .filter((m) => !/^var\(--k-[a-z0-9-]+\)$/.test(m[2]))
-      .map((m) => `${m[1]} = ${m[2]} — a literal cannot change with the theme`);
+    const frozen = entries.flatMap(([status, { fill, ink }]) =>
+      [
+        ["fill", fill],
+        ["ink", ink],
+      ]
+        .filter(([, v]) => !/^var\(--k-[a-z0-9-]+\)$/.test(v))
+        .map(([slot, v]) => `${status}.${slot} = ${v} — a literal cannot change with the theme`),
+    );
 
     expect(frozen).toEqual([]);
   });

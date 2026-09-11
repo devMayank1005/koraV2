@@ -45,6 +45,21 @@
   --k-fill-warn: #f59e0b;
   --k-fill-ok: #88b787;
 
+  /* Label colour for text sitting ON one of those fills — the matrix cell's
+     initials.
+
+     THE SAME VALUE IN BOTH THEMES, deliberately, and this is NOT the frozen
+     light-mode mistake that `--k-fill-ok` and `--k-cyan` were rescued from. It
+     is the opposite case: every fill above gets LIGHTER in dark mode, never
+     darker, so a label that flipped to a light ink would be unreadable exactly
+     where the ground is palest. Measured against all eight fills in both
+     themes it ranges 4.71:1 (At Risk, light) to 9.28:1 (Delayed, dark) — AA on
+     every one. White, which the reference artwork uses, manages 2.15–3.76:1
+     and fails all of them.
+
+     Kept out of MUST_OVERRIDE_IN_DARK for that reason. */
+  --k-on-fill: #18181b;
+
   /* The offline banner is white 12.5px on solid red. The handoff says to use
      --k-fill-risk, but white on #EF4444 is 3.76:1 — below AA, on the one
      message telling people their work is not being saved. A darker red for

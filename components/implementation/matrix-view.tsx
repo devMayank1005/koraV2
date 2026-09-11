@@ -16,8 +16,9 @@ import { AddModuleDialog } from "@/components/create/module-dialog";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
   PHASES,
-  STATUSES,
   SIGNOFF_PHASES,
+  STATUSES,
+  STATUS_CELL,
   shortPhase,
 } from "@/lib/domain/constants";
 import {
@@ -31,30 +32,17 @@ import {
 } from "@/lib/domain/implementation";
 import { fmtDate } from "@/lib/utils/dates";
 import type { Client, Module, Phase, Status } from "@/lib/domain/types";
+import { initials } from "@/lib/utils/people";
 
 /**
- * 1e's cell fills, ON THE TOKENS rather than frozen into this file.
+ * CELL COLOUR COMES FROM `STATUS_CELL`, not from anything declared here.
  *
- * These were `rgba(136, 183, 135, .85)` and `rgba(0, 155, 221, .85)` — which are
- * exactly the LIGHT-MODE values of the two tokens below, with the artboard's
- * alpha baked in. Because they bypassed the token system they did not flip in
- * dark mode, so two of the four marks stayed at their light values on a dark
- * ground while `!` and `~` — which always used `var(--k-fill-*)` — flipped
- * correctly. Nothing caught it: the design tests inspect `text-k-*` utility
- * classes, and these arrive through an inline `style={{ color }}`.
- *
- * Light mode is unchanged to the byte: `--k-fill-ok` IS `#88b787` and
- * `--k-cyan` IS `#009bdd`. Dropping the 85% alpha is the only visible
- * difference, and it is the difference between 2.65:1 and 3.12:1 on the blue —
- * which at the 20px bold below is WCAG "large text", where the bar is 3:1.
- *
- * The green tick lands at 2.29:1 and still does not pass. Fixing that properly
- * means `--k-text-green` (5.49:1), the text-safe pair the handoff rule at
- * globals.css:13 asks for — a visibly darker, duller tick than the artboard's,
- * which is a design decision rather than a bug fix and so is not made here.
+ * Two constants used to live at this spot, and before that they were raw
+ * `rgba(...)` literals frozen at their light-mode values — which is why the
+ * design test still watches this file for hex. `STATUS_CELL` in
+ * lib/domain/constants.ts now carries a theme-aware token per status, so the
+ * matrix cannot reintroduce that bug and cannot disagree with its own legend.
  */
-const SIGNED_FILL = "var(--k-fill-ok)";
-const WIP_FILL = "var(--k-cyan)";
 
 /**
  * The implementation matrix (artboard 1e): modules down, the nine fixed phases
@@ -366,50 +354,36 @@ function Matrix({
 }
 
 /**
- * The cell states, spelled out.
+ * Every status, as a swatch.
  *
- * A glyph is a weaker signal than a block of colour, so the legend is not
- * optional decoration here — without it the grid is unreadable to anyone who
- * has not been told what `~` means.
+ * Ten entries, not five. The cells carry a colour per status now, so a legend
+ * explaining four of them would leave most of the grid unexplained. Generated
+ * from the same `STATUS_CELL` map the cells use, in `STATUSES` order — a legend
+ * maintained by hand beside a grid is a legend that eventually lies.
  */
-const LEGEND: { mark: string; fill: string; label: string }[] = [
-  { mark: "✓", fill: SIGNED_FILL, label: "Signed off" },
-  { mark: "•", fill: WIP_FILL, label: "In progress" },
-  { mark: "!", fill: "var(--k-fill-risk)", label: "At risk" },
-  { mark: "~", fill: "var(--k-fill-warn)", label: "Delayed" },
-  { mark: "", fill: "var(--k-line-2)", label: "Not started" },
-];
-
 function Legend() {
   return (
     <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-k-mute">
-      {LEGEND.map((l) => (
-        <li key={l.label} className="flex items-center gap-1.5">
-          {/* The swatch carries the GLYPH, not just the colour. A row of empty
-              tinted squares would leave `~` and `!` unexplained, which is the
-              whole reason the legend is here now that the cells no longer
-              carry a block of colour. */}
+      {STATUSES.map((status) => (
+        <li key={status} className="flex items-center gap-1.5">
           <span
             aria-hidden
-            /* Grown with the cells, but NOT to 20px: this sits inline with a
-               `text-[11px]` label, and a 20px mark beside an 11px word reads as
-               a mistake. The box has to grow with the glyph — it is a hard
-               square, so raising the font-size alone would clip the `~`. */
-            className="k-mono inline-flex h-[17px] w-[17px] items-center justify-center rounded-[2px] text-[13px] font-bold leading-none"
+            className="inline-block h-[11px] w-[11px] shrink-0 rounded-[2px]"
             style={{
-              background: l.mark ? "transparent" : l.fill,
-              boxShadow: l.mark ? undefined : "inset 0 0 0 1px var(--k-line)",
-              color: l.fill,
+              background: STATUS_CELL[status].fill,
+              boxShadow:
+                status === "Not Started"
+                  ? "inset 0 0 0 1px var(--k-line)"
+                  : undefined,
             }}
-          >
-            {l.mark}
-          </span>
-          {l.label}
+          />
+          {status}
         </li>
       ))}
     </ul>
   );
 }
+
 
 function Stat({
   value,
@@ -435,24 +409,34 @@ function Stat({
 }
 
 /**
- * What a cell shows. Null means "no row for this phase" — a data problem, not a
- * status, and drawn differently from Not Started so the two cannot be confused.
+ * How a cell is painted. Null means "no row for this phase" — a data problem,
+ * not a status, and drawn differently from Not Started so the two cannot be
+ * confused.
  *
- * SIGNED OFF IS NOT `status === "Completed"`. A sign-off phase completed with no
- * document attached is not signed off, and `phaseSignedOff` asks the same
- * question the server asks before it will accept the write.
+ * EVERY STATUS GETS ITS OWN COLOUR NOW. This used to collapse ten statuses into
+ * five outcomes: anything that was not signed off, At Risk, Delayed or Not
+ * Started came out as the same cyan dot, so On Hold, Pending Client, Under
+ * Review, Cancelled and Completed-without-a-document were indistinguishable
+ * across the grid. The point of a matrix is scanning it, and half the answers
+ * were invisible.
+ *
+ * SIGNED OFF IS STILL NOT `status === "Completed"`. A sign-off phase completed
+ * with no document attached is not signed off — `phaseSignedOff` asks the same
+ * question the server asks before it will accept the write — so it is painted
+ * as In Progress rather than given a green it has not earned.
  */
-function cellMark(
+function cellPaint(
   phase: Phase | undefined,
-): { glyph: string; color: string } | null {
+): { fill: string; ink: string; who: string } | null {
   if (!phase) return null;
-  if (phaseSignedOff(phase)) return { glyph: "✓", color: SIGNED_FILL };
-  if (phase.status === "At Risk")
-    return { glyph: "!", color: "var(--k-fill-risk)" };
-  if (phase.status === "Delayed")
-    return { glyph: "~", color: "var(--k-fill-warn)" };
-  if (phase.status === "Not Started") return { glyph: "", color: "" };
-  return { glyph: "•", color: WIP_FILL };
+
+  const status: Status =
+    phase.status === "Completed" && !phaseSignedOff(phase)
+      ? "In Progress"
+      : phase.status;
+
+  const { fill, ink } = STATUS_CELL[status] ?? STATUS_CELL["Not Started"];
+  return { fill, ink, who: phase.assignee ? initials(phase.assignee) : "" };
 }
 
 /**
@@ -460,9 +444,8 @@ function cellMark(
  *
  * A button, not a div: this is the primary way to move around the matrix, and
  * making it keyboard-reachable is the difference between a grid you can use and
- * a picture of one. The status is carried in the accessible name too — with the
- * colour block replaced by a glyph, that name is now the only place the status
- * is stated in words.
+ * a picture of one. The status is carried in the accessible name, along with
+ * the assignee — the initials on screen are two letters and nothing else.
  */
 function Cell({
   phase,
@@ -476,48 +459,37 @@ function Cell({
   onClick: () => void;
 }) {
   const status = (phase?.status ?? "Not Started") as Status;
-  const mark = cellMark(phase);
-  const empty = mark !== null && mark.glyph === "";
+  const paint = cellPaint(phase);
 
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${label}: ${phase ? status : "not present"}`}
+      aria-label={`${label}: ${phase ? status : "not present"}${
+        phase?.assignee ? `, ${phase.assignee}` : ""
+      }`}
       aria-pressed={selected}
-      title={`${label} — ${phase ? status : "not present"}`}
-      className="flex min-h-9 w-full items-center justify-center border-l border-k-line transition-[filter] hover:brightness-95"
-      style={{
-        background: empty ? "var(--k-line-2)" : undefined,
-        // A missing phase is a data problem, not a status. It reads as a dashed
-        // hairline so it cannot be mistaken for "Not Started".
-        boxShadow:
-          mark === null ? "inset 0 0 0 1px var(--k-line-2)" : undefined,
-        outline: selected ? "2px solid var(--k-primary)" : undefined,
-        outlineOffset: selected ? "-2px" : undefined,
-      }}
+      title={`${label} — ${phase ? status : "not present"}${
+        phase?.assignee ? ` · ${phase.assignee}` : ""
+      }`}
+      className="flex min-h-9 w-full items-center justify-center border-l border-k-line p-1 transition-[filter] hover:brightness-95"
     >
-      {mark && mark.glyph && (
-        <span
-          aria-hidden
-          /**
-           * 20px, up from 10px. The cell is 83 x 54.5 and its `min-h-9` floor
-           * is 36, so a `leading-none` glyph — whose line box equals its
-           * font-size — has about 44px of headroom before any row moves. At
-           * 26px the `!` starts to dominate the cell; at 20px all four marks
-           * read across a nine-column grid without shouting.
-           *
-           * The `•` gains least, because a bullet carries far less ink than
-           * `✓`, `!` or `~` at the same size. Left as a character deliberately:
-           * it keeps the hierarchy the artboard intended, where "in progress"
-           * is quiet and "at risk" is not.
-           */
-          className="k-mono text-[20px] font-bold leading-none"
-          style={{ color: mark.color }}
-        >
-          {mark.glyph}
-        </span>
-      )}
+      {/* The block sits INSIDE the button rather than being it, so the grid
+          keeps its hairlines and the selected ring has something to hug. */}
+      <span
+        className="flex h-full min-h-7 w-full items-center justify-center rounded-[3px] text-[12px] font-bold leading-none"
+        style={{
+          background: paint ? paint.fill : undefined,
+          color: paint?.ink,
+          // A missing phase is a data problem, not a status. It reads as a
+          // hairline outline so it cannot be mistaken for Not Started.
+          boxShadow: paint ? undefined : "inset 0 0 0 1px var(--k-line-2)",
+          outline: selected ? "2px solid var(--k-primary)" : undefined,
+          outlineOffset: selected ? "1px" : undefined,
+        }}
+      >
+        <span aria-hidden>{paint?.who}</span>
+      </span>
     </button>
   );
 }

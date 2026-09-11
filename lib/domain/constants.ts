@@ -101,6 +101,45 @@ export const DEFAULT_CAPACITY_WEIGHTS = {
 } as const;
 
 /**
+ * Status → the colours a FILLED cell needs: a ground and a label that reads on
+ * it.
+ *
+ * Separate from `STATUS_COLORS` below rather than folded into it, because the
+ * two answer different questions. `STATUS_COLORS.fill` is a frozen hex — the
+ * PDF and Excel exports need a real colour value, and a canvas cannot resolve
+ * `var()`. That is fine for a dot drawn on paper and wrong for a grid cell on
+ * screen: a frozen hex does not flip in dark mode, which is the exact bug the
+ * implementation matrix was rescued from once already.
+ *
+ * So the screen gets tokens. Every entry here is a `var(--k-*)` that has a dark
+ * counterpart, and a test asserts both that and that every `Status` appears.
+ *
+ * THE LABEL COLOUR IS NOT WHITE. Measured against all eight grounds in both
+ * themes, white runs 2.15:1 to 3.76:1 — it fails AA on every status and the
+ * 3:1 large-text bar on six. `--k-on-fill` runs 4.71:1 to 9.28:1. The two pale
+ * statuses are the exception and take the ordinary muted text colour, because
+ * `--k-line-2` in dark mode is a navy on which the dark ink would be 1.93:1.
+ *
+ * Not Started stays the pale `--k-line-2` the matrix already used for it, and
+ * Cancelled takes a real grey: "never begun" and "abandoned" should not look
+ * identical across a grid you scan for gaps.
+ */
+export const STATUS_CELL: Record<Status, { fill: string; ink: string }> = {
+  Completed: { fill: "var(--k-fill-ok)", ink: "var(--k-on-fill)" },
+  "In Progress": { fill: "var(--k-cyan)", ink: "var(--k-on-fill)" },
+  "At Risk": { fill: "var(--k-fill-risk)", ink: "var(--k-on-fill)" },
+  Delayed: { fill: "var(--k-fill-warn)", ink: "var(--k-on-fill)" },
+  "Pending Client": { fill: "var(--k-olive)", ink: "var(--k-on-fill)" },
+  "Under Review": { fill: "var(--k-sky)", ink: "var(--k-on-fill)" },
+  "On Hold — Internal": { fill: "var(--k-grey)", ink: "var(--k-on-fill)" },
+  // Both On Holds share a grey, as STATUS_COLORS does. Splitting them by hue
+  // here would make the matrix disagree with every status pill in the app.
+  "On Hold — Client": { fill: "var(--k-grey)", ink: "var(--k-on-fill)" },
+  Cancelled: { fill: "var(--k-grey)", ink: "var(--k-on-fill)" },
+  "Not Started": { fill: "var(--k-line-2)", ink: "var(--k-mute)" },
+};
+
+/**
  * Status → colour, on the Kognoz palette.
  *
  * `fill` is for dots, bars, grid cells and borders. `text` is the darkened
