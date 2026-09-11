@@ -32,9 +32,29 @@ import {
 import { fmtDate } from "@/lib/utils/dates";
 import type { Client, Module, Phase, Status } from "@/lib/domain/types";
 
-/** 1e's cell fills, at the artboard's own alpha. */
-const SIGNED_FILL = "rgba(136, 183, 135, .85)";
-const WIP_FILL = "rgba(0, 155, 221, .85)";
+/**
+ * 1e's cell fills, ON THE TOKENS rather than frozen into this file.
+ *
+ * These were `rgba(136, 183, 135, .85)` and `rgba(0, 155, 221, .85)` — which are
+ * exactly the LIGHT-MODE values of the two tokens below, with the artboard's
+ * alpha baked in. Because they bypassed the token system they did not flip in
+ * dark mode, so two of the four marks stayed at their light values on a dark
+ * ground while `!` and `~` — which always used `var(--k-fill-*)` — flipped
+ * correctly. Nothing caught it: the design tests inspect `text-k-*` utility
+ * classes, and these arrive through an inline `style={{ color }}`.
+ *
+ * Light mode is unchanged to the byte: `--k-fill-ok` IS `#88b787` and
+ * `--k-cyan` IS `#009bdd`. Dropping the 85% alpha is the only visible
+ * difference, and it is the difference between 2.65:1 and 3.12:1 on the blue —
+ * which at the 20px bold below is WCAG "large text", where the bar is 3:1.
+ *
+ * The green tick lands at 2.29:1 and still does not pass. Fixing that properly
+ * means `--k-text-green` (5.49:1), the text-safe pair the handoff rule at
+ * globals.css:13 asks for — a visibly darker, duller tick than the artboard's,
+ * which is a design decision rather than a bug fix and so is not made here.
+ */
+const SIGNED_FILL = "var(--k-fill-ok)";
+const WIP_FILL = "var(--k-cyan)";
 
 /**
  * The implementation matrix (artboard 1e): modules down, the nine fixed phases
@@ -371,7 +391,11 @@ function Legend() {
               carry a block of colour. */}
           <span
             aria-hidden
-            className="k-mono inline-flex h-[13px] w-[13px] items-center justify-center rounded-[2px] text-[10px] font-bold leading-none"
+            /* Grown with the cells, but NOT to 20px: this sits inline with a
+               `text-[11px]` label, and a 20px mark beside an 11px word reads as
+               a mistake. The box has to grow with the glyph — it is a hard
+               square, so raising the font-size alone would clip the `~`. */
+            className="k-mono inline-flex h-[17px] w-[17px] items-center justify-center rounded-[2px] text-[13px] font-bold leading-none"
             style={{
               background: l.mark ? "transparent" : l.fill,
               boxShadow: l.mark ? undefined : "inset 0 0 0 1px var(--k-line)",
@@ -476,7 +500,19 @@ function Cell({
       {mark && mark.glyph && (
         <span
           aria-hidden
-          className="k-mono text-[10px] font-bold leading-none"
+          /**
+           * 20px, up from 10px. The cell is 83 x 54.5 and its `min-h-9` floor
+           * is 36, so a `leading-none` glyph — whose line box equals its
+           * font-size — has about 44px of headroom before any row moves. At
+           * 26px the `!` starts to dominate the cell; at 20px all four marks
+           * read across a nine-column grid without shouting.
+           *
+           * The `•` gains least, because a bullet carries far less ink than
+           * `✓`, `!` or `~` at the same size. Left as a character deliberately:
+           * it keeps the hierarchy the artboard intended, where "in progress"
+           * is quiet and "at risk" is not.
+           */
+          className="k-mono text-[20px] font-bold leading-none"
           style={{ color: mark.color }}
         >
           {mark.glyph}

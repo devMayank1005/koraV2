@@ -161,3 +161,63 @@ describe("design token usage", () => {
     });
   });
 });
+
+/**
+ * The blind spot the test above cannot see into: inline `style`.
+ *
+ * `textColourUses` reads `text-k-*` utility classes. A colour handed over as
+ * `style={{ color }}` is invisible to it, and that is exactly where this bug
+ * lived — the implementation matrix drew its `✓` and `•` from
+ * `rgba(136, 183, 135, .85)` and `rgba(0, 155, 221, .85)`, which are the
+ * LIGHT-MODE values of `--k-fill-ok` and `--k-cyan` with the artboard's alpha
+ * frozen in. Light mode looked right, so nobody noticed that dark mode left two
+ * of the four marks at their light values while `!` and `~`, which used
+ * `var(--k-fill-*)` all along, flipped correctly.
+ *
+ * Scoped to this one file rather than the whole tree on purpose. A blanket ban
+ * on colour literals would also flag the Microsoft logo on the sign-in button
+ * (brand colours must NOT theme-flip) and the neutral scrim behind the command
+ * palette, and an allowlist of judgement calls is a different piece of work
+ * from pinning a fixed bug.
+ */
+describe("implementation matrix status colours", () => {
+  const FILE = join("components", "implementation", "matrix-view.tsx");
+
+  /**
+   * Comments stripped first, and this is load-bearing rather than tidy: the
+   * comment explaining the fix QUOTES the two rgba literals it replaced, so a
+   * naive scan would fail on its own explanation.
+   */
+  const code = readFileSync(FILE, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+
+  const fills = [...code.matchAll(/const (SIGNED_FILL|WIP_FILL) = "([^"]+)"/g)];
+
+  it("finds the fill constants at all (the scan itself works)", () => {
+    // Without this the assertions below pass vacuously the day someone renames
+    // the constants or moves them to another module.
+    expect(fills.map((m) => m[1]).sort()).toEqual(["SIGNED_FILL", "WIP_FILL"]);
+  });
+
+  it("draws every status mark from a token, so dark mode flips all four", () => {
+    const frozen = fills
+      .filter((m) => !/^var\(--k-[a-z0-9-]+\)$/.test(m[2]))
+      .map((m) => `${m[1]} = ${m[2]} — a literal cannot change with the theme`);
+
+    expect(frozen).toEqual([]);
+  });
+
+  it("carries no colour literal anywhere in the matrix", () => {
+    const literals = code
+      .split("\n")
+      .map((text, i) => ({ line: i + 1, text: text.trim() }))
+      .filter(({ text }) => /#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(text))
+      .map(({ line, text }) => `${FILE}:${line} — ${text}`);
+
+    expect(
+      literals,
+      "A hex or rgb() in this file is a theme frozen in place; use a --k-* token",
+    ).toEqual([]);
+  });
+});
