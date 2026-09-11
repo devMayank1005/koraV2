@@ -527,15 +527,6 @@
     }
   }
 
-  /* A .k-field that holds a value taller than one line — the activity feed's
-     entries, a wrapped next action. Same box, no fixed height. */
-  .k-field-block {
-    display: block;
-    height: auto;
-    padding: 10px;
-    line-height: 1.5;
-  }
-
   .k-page {
     max-width: var(--k-page-max);
     margin-inline: auto;
@@ -778,6 +769,21 @@
   /* A `.k-field` that is also a button — the click target that swaps a
      read-mode value for an input. Looks identical at rest so the page does not
      become a grid of boxes, and announces itself on hover. */
+  /* A .k-field holding a value taller than one line — an activity entry, a
+     wrapped note. Same box, no fixed height.
+
+     IT HAS TO SIT AFTER `.k-field`, and it did not. Both are single-class
+     selectors, so specificity is equal and SOURCE ORDER decides; declared
+     earlier in the file it lost every property it overrides, leaving the
+     activity feed's entries as 32px flex rows with the date and the text
+     colliding on one line. The same trap `.k-kpi-strip` exists to document. */
+  .k-field-block {
+    display: block;
+    height: auto;
+    padding: 10px 12px;
+    line-height: 1.5;
+  }
+
   .k-field-edit {
     width: 100%;
     text-align: left;

@@ -104,17 +104,23 @@ export function IntegrationPanel({
         </p>
       )}
 
-      {/* The one thing a status cannot tell you: what happens next. A real
-          field on every integration that no list has ever had room for, which
-          is most of why opening a record was worth a navigation. The reference
-          draws a lightning bolt emoji here; house rule is Lucide. */}
+      {/* THE FIRST THING YOU SHOULD SEE, and built to be.
+          
+          A status tells you where a record stands; only this tells you what
+          happens next, and it is the reason anyone opens the panel rather than
+          reading the row. It was `.k-callout` — 12px `--k-ink-3` on a 5% tint —
+          which reads as a footnote next to the field boxes below it. The action
+          is now the largest text in the panel after the name, at full `--k-ink`
+          weight, with the accent doubled so the eye lands here on the way down
+          from the title. The reference draws a lightning bolt emoji; house rule
+          is Lucide. */}
       {integration.nextAction && (
-        <section className="k-callout mt-4">
-          <h3 className="k-eyebrow flex items-center gap-1.5">
-            <Zap size={12} strokeWidth={1.5} aria-hidden />
+        <section className="mt-4 rounded-k border-l-4 border-k-primary bg-k-primary/[.10] px-4 py-3.5">
+          <h3 className="k-eyebrow flex items-center gap-1.5 text-k-primary">
+            <Zap size={13} strokeWidth={2} aria-hidden />
             Next action
           </h3>
-          <p className="mt-1.5 whitespace-pre-wrap text-[12.5px] leading-[1.55] text-k-ink-3">
+          <p className="mt-1.5 whitespace-pre-wrap text-[14px] font-medium leading-[1.5] text-k-ink">
             {integration.nextAction}
           </p>
         </section>
