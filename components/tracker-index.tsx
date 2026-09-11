@@ -47,13 +47,28 @@ export function TrackerIndex({ domain }: { domain: Domain }) {
    */
   const [showAll, setShowAll] = useState(false);
 
+  /**
+   * DOMAIN MEMBERSHIP FROM KEY PRESENCE, not from `hasImplementation`.
+   *
+   * This screen runs on TREES, and a tree has no such flag: `toV1Shape` builds
+   * from v1's field whitelist, which predates migration 0003, so it emits the
+   * v1 null-sentinel instead — `modules` present (even as `[]`) means in the
+   * domain, absent means not. Reading the flag here returned `undefined` for
+   * every client, and both the Implementation and the AMS index rendered "No
+   * clients in this tracker yet" over a rail listing twenty-two of them.
+   *
+   * `lib/export/excel.ts` reads the same trees the same way and says so. The
+   * rail beside this one reads `hasImplementation` and is right to: it runs on
+   * `ClientSummary`, which carries the flags and has no children to be present
+   * or absent.
+   */
   const inDomain = useMemo(() => {
     const all = query.data ?? [];
     return all.filter((c) =>
       domain === "implementation"
-        ? c.hasImplementation
+        ? c.modules !== undefined
         : domain === "ams"
-          ? c.hasAms
+          ? c.workLog !== undefined
           : true,
     );
   }, [query.data, domain]);
