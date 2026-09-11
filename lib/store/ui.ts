@@ -1,6 +1,5 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import type { IntegSort } from "@/lib/domain/integrations";
 import { persist, createJSONStorage } from "zustand/middleware";
@@ -129,6 +128,27 @@ interface UiState {
   integSort: IntegSort;
   setIntegSort: (mode: IntegSort) => void;
 
+  /**
+   * Has the persisted slice arrived? Part of the STATE, deliberately.
+   *
+   * It used to be read off `persist.hasHydrated()` through
+   * `useSyncExternalStore`, and that had a hole big enough to hang the app on.
+   * The subscription there is `onFinishHydration`, a one-shot that never fires
+   * if hydration finished first — and the only other thing that re-rendered a
+   * reader was some OTHER value changing during rehydration. On a browser with
+   * nothing stored, rehydration writes the same empty values, nothing changes,
+   * nothing re-renders, and the flag stays false forever. The integrations
+   * landing gates its redirect on it, so a first-time visitor sat on a skeleton
+   * that never resolved.
+   *
+   * As a state field it goes false -> true, which IS a change, so every
+   * subscriber is notified exactly once, by the same mechanism as everything
+   * else in this store. Excluded from `partialize`: it describes this page
+   * load, not a preference.
+   */
+  hydrated: boolean;
+  setHydrated: () => void;
+
   /** Admin-only preview of a lesser role. Memory-only — see below. */
   viewAsRole: "editor" | "viewer" | null;
   setViewAsRole: (r: "editor" | "viewer" | null) => void;
@@ -179,6 +199,9 @@ export const useUi = create<UiState>()(
       integSort: "worst",
       setIntegSort: (mode) => set({ integSort: mode }),
 
+      hydrated: false,
+      setHydrated: () => set({ hydrated: true }),
+
       viewAsRole: null,
       setViewAsRole: (r) => set({ viewAsRole: r }),
     }),
@@ -213,6 +236,28 @@ export const useUi = create<UiState>()(
        * that predates `paneWidths` simply falls back to the defaults above.
        */
       version: 1,
+      /**
+       * Flip `hydrated` once the stored slice has been merged in.
+       *
+       * CALLED ON THE STATE ZUSTAND HANDS BACK, not through the `useUi` binding
+       * above — `persist` runs this inside `create(...)`, where that binding is
+       * still in its temporal dead zone. Reaching for it there throws a
+       * ReferenceError that zustand swallows, which leaves the flag false and
+       * hangs every screen that waits on it.
+       *
+       * `state` is undefined only when storage itself threw. That still counts
+       * as settled: a browser with storage disabled is never going to produce a
+       * stored slice, and a reader that waits forever is worse than one that
+       * proceeds with defaults. By then `create` has returned, so the binding
+       * is safe.
+       */
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setHydrated();
+          return;
+        }
+        queueMicrotask(() => useUi.setState({ hydrated: true }));
+      },
     },
   ),
 );
@@ -319,28 +364,10 @@ export function useEffectiveRole(realRole: string): string {
 /**
  * Has the stored slice actually arrived?
  *
- * `persist` DOES NOT REHYDRATE BEFORE THE FIRST RENDER, and anything that makes
- * a decision from a stored value has to know that. The first render sees the
- * initial state — `lastIntegrationsClient` undefined — and the stored value
- * lands a tick later.
- *
- * That is harmless for a pane width, which simply animates from its default to
- * the stored one. It is not harmless for a decision you cannot take twice: the
- * integrations landing read "no remembered client", redirected to the first
- * one, and was then told the real answer and redirected again. Two competing
- * `router.replace` calls, and the screen sat on a skeleton.
- *
- * Read through `useSyncExternalStore` rather than an effect for the usual
- * reason — no tearing, no extra render — with a server snapshot of `false`,
- * since nothing is hydrated during SSR by definition.
+ * A plain selector now. See the `hydrated` field above for why this is not
+ * `persist.hasHydrated()` read through `useSyncExternalStore` — that version
+ * never updated on a browser with nothing stored yet.
  */
-const subscribeHydration = (onChange: () => void) =>
-  useUi.persist.onFinishHydration(onChange);
-
-const hydrated = () => useUi.persist.hasHydrated();
-
-const hydratedOnServer = () => false;
-
 export function useUiHydrated(): boolean {
-  return useSyncExternalStore(subscribeHydration, hydrated, hydratedOnServer);
+  return useUi((s) => s.hydrated);
 }

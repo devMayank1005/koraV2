@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { useClientList } from "@/lib/query/hooks";
+import { inIntegrationsTracker } from "@/lib/domain/integrations";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { RagDot } from "@/components/ui/status";
 import { STATUS_COLORS } from "@/lib/domain/constants";
@@ -28,7 +29,18 @@ export type Domain = "implementation" | "ams" | "integrations";
  * prevent — six clients are in a domain with nothing in it yet, and filtering
  * on counts would silently drop all six.
  *
- * Integrations has no membership flag; every client can hold integrations.
+ * Integrations has no membership flag, so PRESENCE is its rule instead: a
+ * client is listed once it actually has an integration. That is the opposite
+ * of the paragraph above and is correct for the opposite reason — there is no
+ * flag to read, and a client with none has nothing to show on a screen whose
+ * job is triage. The rule lives in `inIntegrationsTracker` so the index and the
+ * landing redirect cannot drift from it.
+ *
+ * HIDDEN IS NOT GONE. The presence rule lifts while you are searching, because
+ * the `+ Integration` button lives on the client's own page and nothing else in
+ * the app can give a client its first integration — a name typed into the
+ * filter box has to still find it. Membership filtering does not lift: it is
+ * about belonging, not emptiness.
  *
  * ONLY INTEGRATIONS GETS THE DOT AND THE BAR. 1c is the only artboard that
  * draws this rail, and `integHealth` is the only per-domain health the list
@@ -53,17 +65,34 @@ export function ClientRail({
 
   const clients = useMemo(() => {
     const all = query.data ?? [];
+    const t = term.trim().toLowerCase();
+
     const inDomain = all.filter((c) =>
       domain === "implementation"
         ? c.hasImplementation
         : domain === "ams"
           ? c.hasAms
-          : true,
+          : // Searching lifts the presence rule, so a client with no
+            // integrations is still reachable by name — see the docblock.
+            t !== "" || inIntegrationsTracker(c.counts.integrations),
     );
-    const t = term.trim().toLowerCase();
+
     return t
       ? inDomain.filter((c) => c.name.toLowerCase().includes(t))
       : inDomain;
+  }, [query.data, domain, term]);
+
+  /**
+   * How many the presence rule is holding back, stated rather than silent.
+   *
+   * A list that quietly drops a quarter of its rows and says nothing is how
+   * someone concludes a client has been deleted.
+   */
+  const hidden = useMemo(() => {
+    if (domain !== "integrations" || term.trim() !== "") return 0;
+    return (query.data ?? []).filter(
+      (c) => !inIntegrationsTracker(c.counts.integrations),
+    ).length;
   }, [query.data, domain, term]);
 
   const countFor = (c: ClientSummary) =>
@@ -150,12 +179,19 @@ export function ClientRail({
         </QueryState>
       </div>
 
-      {/* 1c has no footer here, and the default view matches it. The count
-          appears only while filtering, because the input has no other feedback
-          — without it, a typo just empties the list with no explanation. */}
+      {/* 1c has no footer here. While filtering, the count is the input's only
+          feedback — without it a typo just empties the list with no
+          explanation. At rest it carries the one thing the artboard could not
+          know about: how many clients the presence rule is holding back. */}
       {term.trim() !== "" && clients.length > 0 && (
         <div className="border-t border-k-line px-3 py-2 text-[11px] text-k-mute">
           {clients.length} of {(query.data ?? []).length} shown
+        </div>
+      )}
+      {hidden > 0 && (
+        <div className="border-t border-k-line px-3 py-2 text-[11px] text-k-mute">
+          {hidden} with no integration{hidden === 1 ? "" : "s"} · search to find
+          them
         </div>
       )}
     </aside>

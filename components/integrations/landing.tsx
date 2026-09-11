@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useClientList } from "@/lib/query/hooks";
-import { useUi, useUiHydrated } from "@/lib/store/ui";
-import { pickLanding } from "@/lib/domain/integrations";
+import { useUi } from "@/lib/store/ui";
+import { pickLanding, inIntegrationsTracker } from "@/lib/domain/integrations";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 
 /**
@@ -63,37 +63,47 @@ export function IntegrationsLanding({
 }) {
   const router = useRouter();
   const query = useClientList();
-  const remembered = useUi((s) => s.lastIntegrationsClient);
-  const storeReady = useUiHydrated();
   const railVisible = useSyncExternalStore(subscribe, hasRail, hasRailServer);
 
-  // The rail's own query, already hydrated by the layout — so this costs no
-  // request and the ids are here on the first render.
-  const ids = useMemo(() => (query.data ?? []).map((c) => c.id), [query.data]);
-  const target = pickLanding(remembered, ids);
-
   /**
-   * Both gates matter, and the second one cost an afternoon.
+   * The rail's own query, already hydrated by the layout — so this costs no
+   * request and the ids are here on the first render.
    *
-   * `query.isPending` — redirecting to `undefined` lands on a 404, and showing
-   * the index only to yank it away is worse than one more frame of skeleton.
-   *
-   * `storeReady` — `persist` rehydrates AFTER the first render, so without it
-   * this reads "nothing remembered", redirects to the first client, is then
-   * handed the real answer and redirects again. Two `router.replace` calls
-   * racing each other, and the screen sits on a skeleton. A redirect is not a
-   * decision you can take twice.
+   * FILTERED THE SAME WAY THE RAIL IS. Without it this redirects to whatever is
+   * alphabetically first, which here is a client with no integrations at all —
+   * landing you on an empty screen that the rail beside it refuses to list. A
+   * remembered client whose integrations have since been archived falls through
+   * to the first that has work, which is the same rule and the right answer.
    */
-  const redirecting =
-    !query.isPending && storeReady && railVisible && Boolean(target);
+  const ids = useMemo(
+    () =>
+      (query.data ?? [])
+        .filter((c) => inIntegrationsTracker(c.counts.integrations))
+        .map((c) => c.id),
+    [query.data],
+  );
+  /**
+   * THE REMEMBERED CLIENT IS READ IN THE EFFECT, not subscribed to in render,
+   * and that is the whole design of this component.
+   *
+   * `persist` rehydrates while this module is evaluated — before React mounts
+   * anything — so by the time an effect runs, `getState()` is the real answer,
+   * synchronously and with no flag to wait on. Subscribing to it in render
+   * instead means the value arrives through React's post-hydration snapshot
+   * check, which is a race: it fired on some loads and not others, and when it
+   * lost, the redirect never happened and a first-time visitor sat on a
+   * skeleton forever. A redirect is a decision taken once; it must not depend
+   * on whether a re-render happened to occur.
+   */
+  const redirecting = !query.isPending && railVisible && ids.length > 0;
 
   useEffect(() => {
-    if (redirecting && target) {
-      router.replace(`/integrations/${encodeURIComponent(target)}`);
-    }
-  }, [redirecting, target, router]);
+    if (!redirecting) return;
+    const target = pickLanding(useUi.getState().lastIntegrationsClient, ids);
+    if (target) router.replace(`/integrations/${encodeURIComponent(target)}`);
+  }, [redirecting, ids, router]);
 
-  if (query.isPending || !storeReady || redirecting) {
+  if (query.isPending || redirecting) {
     return <PageSkeleton shape="cards" rows={9} />;
   }
 

@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { useClientTrees } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { RagPill } from "@/components/ui/status";
-import { integRagLabel } from "@/lib/domain/integrations";
+import {
+  integRagLabel,
+  inIntegrationsTracker,
+} from "@/lib/domain/integrations";
 import { implAutoRag, implProgress } from "@/lib/domain/implementation";
 import { amsClientRag, amsOpenCounts } from "@/lib/domain/ams";
 import type { Domain } from "@/components/client-rail";
@@ -29,17 +32,51 @@ import type { Client } from "@/lib/domain/types";
 export function TrackerIndex({ domain }: { domain: Domain }) {
   const query = useClientTrees();
 
-  const rows = useMemo(() => {
+  /**
+   * SHOW ALL is the escape hatch this screen needs and the rail gets for free.
+   *
+   * Integrations lists a client only once it has one — see
+   * `inIntegrationsTracker`. The rail lifts that rule when you type in its
+   * filter box; this screen has no filter box, and below 768px it is the ONLY
+   * client picker. Since the `+ Integration` button lives on the client's own
+   * page and nothing else in the app can give a client its first integration,
+   * hiding with no way back would strand a phone.
+   *
+   * Local state, not persisted: it is a "let me see everything for a second",
+   * not a preference.
+   */
+  const [showAll, setShowAll] = useState(false);
+
+  const inDomain = useMemo(() => {
     const all = query.data ?? [];
-    const inDomain = all.filter((c) =>
+    return all.filter((c) =>
       domain === "implementation"
         ? c.hasImplementation
         : domain === "ams"
           ? c.hasAms
           : true,
     );
-    return inDomain.map((c) => ({ client: c, ...summarise(c, domain) }));
   }, [query.data, domain]);
+
+  const hidden = useMemo(
+    () =>
+      domain === "integrations"
+        ? inDomain.filter(
+            (c) => !inIntegrationsTracker((c.integrations ?? []).length),
+          ).length
+        : 0,
+    [inDomain, domain],
+  );
+
+  const rows = useMemo(() => {
+    const listed =
+      domain === "integrations" && !showAll
+        ? inDomain.filter((c) =>
+            inIntegrationsTracker((c.integrations ?? []).length),
+          )
+        : inDomain;
+    return listed.map((c) => ({ client: c, ...summarise(c, domain) }));
+  }, [inDomain, domain, showAll]);
 
   const title =
     domain === "implementation"
@@ -54,6 +91,20 @@ export function TrackerIndex({ domain }: { domain: Domain }) {
       <p className="mt-1 text-[12.5px] text-k-mute">
         {rows.length} client{rows.length === 1 ? "" : "s"} in this tracker.
         Choose one to see its detail.
+        {hidden > 0 && (
+          <>
+            {" "}
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="font-semibold text-k-primary hover:underline"
+            >
+              {showAll
+                ? "Hide the empty ones"
+                : `Show ${hidden} with no integrations`}
+            </button>
+          </>
+        )}
       </p>
 
       <div className="mt-5">
@@ -67,7 +118,13 @@ export function TrackerIndex({ domain }: { domain: Domain }) {
           empty={
             <EmptyState
               title="No clients in this tracker yet"
-              hint="A client appears here once it is added to this domain."
+              // Domain-aware, because the old single sentence was simply untrue
+              // of Integrations: there is nothing to be "added to".
+              hint={
+                domain === "integrations"
+                  ? "A client appears here once it has an integration."
+                  : "A client appears here once it is added to this domain."
+              }
             />
           }
         >

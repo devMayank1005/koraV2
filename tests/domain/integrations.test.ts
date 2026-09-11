@@ -4,6 +4,7 @@ import {
   sortIntegrations,
   sortIntegWorstFirst,
   effortLabel,
+  inIntegrationsTracker,
 } from "@/lib/domain/integrations";
 import type { Integration } from "@/lib/domain/types";
 
@@ -128,5 +129,53 @@ describe("effortLabel", () => {
 
   it("renders an absent weight as a dash", () => {
     expect(effortLabel(undefined)).toBe("—");
+  });
+});
+
+/**
+ * `inIntegrationsTracker` — who the Integrations rail lists.
+ *
+ * The rule is trivial; the reason it is a named function is not. The rail, the
+ * `/integrations` index and the landing redirect all apply it, and if they
+ * disagree the app redirects you to a client the list refuses to show. The last
+ * case below is that bug, written as a test.
+ */
+describe("inIntegrationsTracker", () => {
+  it("lists a client once it has one", () => {
+    expect(inIntegrationsTracker(1)).toBe(true);
+    expect(inIntegrationsTracker(9)).toBe(true);
+  });
+
+  it("drops a client with none", () => {
+    expect(inIntegrationsTracker(0)).toBe(false);
+  });
+
+  it("never sends the landing to a client the rail hides", () => {
+    // The composition that matters. `counts.integrations` comes straight from
+    // SQL and excludes archived rows, so "Anand" here is a client whose
+    // integrations were all archived — exactly what the redirect used to pick,
+    // because it is alphabetically first.
+    const clients = [
+      { id: "anand", count: 0 },
+      { id: "aster", count: 0 },
+      { id: "c0", count: 5 },
+      { id: "c1", count: 4 },
+    ];
+    const listed = clients
+      .filter((c) => inIntegrationsTracker(c.count))
+      .map((c) => c.id);
+
+    expect(pickLanding(undefined, listed)).toBe("c0");
+    // A remembered client that has since emptied falls through rather than
+    // opening a screen with nothing on it.
+    expect(pickLanding("anand", listed)).toBe("c0");
+    expect(pickLanding("c1", listed)).toBe("c1");
+  });
+
+  it("leaves nothing to select when no client has any", () => {
+    const listed = [{ count: 0 }, { count: 0 }]
+      .filter((c) => inIntegrationsTracker(c.count))
+      .map(() => "x");
+    expect(pickLanding(undefined, listed)).toBeUndefined();
   });
 });

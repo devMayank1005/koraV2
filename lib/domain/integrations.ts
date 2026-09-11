@@ -198,6 +198,31 @@ export function isDueWithin(
   return d <= 0 && d >= -days;
 }
 
+/* --------------------------------------------------------------- membership */
+
+/**
+ * Does this client belong in the Integrations tracker's list?
+ *
+ * PRESENCE IS THE RIGHT RULE HERE AND THE WRONG RULE NEXT DOOR, which is worth
+ * saying because the rail warns about it twice. Implementation and AMS are
+ * opt-in domains read from `hasImplementation` / `hasAms`: a client is in one
+ * because somebody put it there, and filtering those on counts would drop a
+ * client that is legitimately in a domain with nothing in it yet — the exact
+ * bug migration 0003 exists to prevent. Integrations has no such flag, so
+ * presence is the only signal there is, and a client with none of them has
+ * nothing to show on a screen whose job is triage.
+ *
+ * The count is `ClientSummary.counts.integrations`, which is the same SQL value
+ * as `integHealth.total` by construction and already excludes archived rows.
+ *
+ * A NAMED FUNCTION RATHER THAN THREE INLINE `> 0` CHECKS, because the rail, the
+ * index and the landing redirect must agree: if the landing keeps a client the
+ * rail drops, the app sends you to a screen the list refuses to show.
+ */
+export function inIntegrationsTracker(integrationCount: number): boolean {
+  return integrationCount > 0;
+}
+
 /* ------------------------------------------------------------------ sorting */
 
 export type IntegSort = "worst" | "name" | "due" | "status";

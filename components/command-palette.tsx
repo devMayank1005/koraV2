@@ -249,6 +249,15 @@ function buildResults({
 
   const out: Result[] = [];
 
+  /**
+   * EVERY CLIENT, INCLUDING THE ONES THE RAIL HIDES.
+   *
+   * The Integrations rail lists a client only once it has an integration, and
+   * the `+ Integration` button lives on that client's own page — so this is the
+   * search-by-name route to a client that is otherwise not on screen. The
+   * subtitle already reads "0 integrations" where that is the case, so nothing
+   * here pretends the client has work.
+   */
   out.push(
     ...take(
       clients
