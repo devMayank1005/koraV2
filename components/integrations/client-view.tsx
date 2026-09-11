@@ -1,34 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { AlertTriangle, Clock, Plus } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
 import { ExportMenu } from "@/components/export-menu";
 import { toast } from "sonner";
-import { InlineSelect } from "@/components/ui/inline";
-import { ArchiveButton } from "@/components/ui/archive-button";
 import { SplitPane } from "@/components/ui/resizable";
 import { IntegrationPanel } from "@/components/integrations/integration-panel";
 import { useUi, useUiHydrated } from "@/lib/store/ui";
 import { AddIntegrationDialog } from "@/components/create/integration-dialog";
 import { ClientEmailDialog } from "@/components/integrations/client-email-dialog";
-import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
+import { useCanEdit } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import { STATUSES } from "@/lib/domain/constants";
 import {
   integRagLabel,
-  sortIntegWorstFirst,
   isOverdue,
-  isStale,
   integRiskReason,
-  integMilestoneCounts,
-  lastUpdateDate,
   pickLanding,
+  sortIntegrations,
+  INTEG_SORTS,
+  type IntegSort,
 } from "@/lib/domain/integrations";
-import { STATUS_COLORS } from "@/lib/domain/constants";
 import type { Integration } from "@/lib/domain/types";
 
 /**
@@ -43,7 +38,6 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   const query = useClient(clientId);
   const [filter, setFilter] = useState<string>("all");
   const canEdit = useCanEdit();
-  const assignees = useAssigneeOptions();
   const [adding, setAdding] = useState(false);
   const [emailing, setEmailing] = useState(false);
 
@@ -67,6 +61,8 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
     integId: string | null;
   } | null>(null);
 
+  const sort = useUi((s) => s.integSort);
+  const setSort = useUi((s) => s.setIntegSort);
   const rememberClient = useUi((s) => s.rememberIntegrationsClient);
   const rememberInteg = useUi((s) => s.rememberIntegration);
   const rememberedInteg = useUi((s) => s.lastIntegration[clientId]);
@@ -84,8 +80,8 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   const client = query.data;
 
   const all = useMemo(
-    () => (client ? sortIntegWorstFirst(client.integrations ?? []) : []),
-    [client],
+    () => (client ? sortIntegrations(client.integrations ?? [], sort) : []),
+    [client, sort],
   );
 
   // Chip counts describe the WHOLE set, not the filtered one — a chip that
@@ -144,7 +140,6 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   // calls isOverdue/isStale, which allocate two Dates apiece. Unmemoized it ran
   // on every render of this screen.
   const rag = useMemo(() => (client ? integRagLabel(client) : null), [client]);
-  const staleCount = useMemo(() => all.filter((i) => isStale(i)).length, [all]);
 
   return (
     <div className="k-page">
@@ -276,9 +271,10 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                 onOpenChange={setAdding}
               />
             )}
-
-            {/* Status filter chips — new in the reskin; the old app had no
-                way to narrow this table at all. */}
+            {/* Status filter chips. The counts came off the Status mix card,
+                which this replaces — only statuses actually present are drawn,
+                because a row of seven "(0)" chips wraps to two lines and says
+                nothing the absent chip did not already say. */}
             {all.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-1.5">
                 <div
@@ -288,6 +284,7 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                 >
                   <Chip
                     label="All"
+                    count={all.length}
                     active={filter === "all"}
                     onClick={() => setFilter("all")}
                   />
@@ -295,91 +292,66 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
                     <Chip
                       key={status}
                       label={status}
+                      count={counts[status] ?? 0}
                       active={filter === status}
                       onClick={() => setFilter(status)}
                     />
                   ))}
                 </div>
-                {/* The per-chip counts 1c drops are not lost — the Status mix
-                    card under the table carries all of them at once, which is
-                    the comparison you actually want them for. */}
-                <span
-                  className="ml-auto text-[11.5px] text-k-mute-2"
-                  aria-live="polite"
-                >
-                  {shown.length} of {all.length} shown
-                </span>
               </div>
             )}
 
-            {(() => {
-              const body = (
-                <div>
-                  <div className="mt-4">
-                    {shown.length === 0 ? (
-                      <EmptyState
-                        title={
-                          all.length === 0
-                            ? "No integrations yet"
-                            : `Nothing with status "${filter}"`
-                        }
-                        hint={
-                          all.length === 0
-                            ? "Integrations added for this client will appear here."
-                            : undefined
-                        }
-                      />
-                    ) : (
-                      <IntegrationTable
-                        clientId={clientId}
-                        rows={shown}
-                        canEdit={canEdit}
-                        assignees={assignees}
-                        selectedId={selectedId}
-                        onSelect={pick}
-                        compact={Boolean(selected)}
-                      />
-                    )}
-                  </div>
-
-                  {/* Both cards read the WHOLE set, never the filtered one. A
-                      status mix that recomposed itself after you clicked "At
-                      Risk" could only ever say "100% At Risk". */}
-                  {all.length > 0 && (
-                    <div className="mt-3.5 flex flex-wrap gap-3.5">
-                      <StatusMix rows={all} />
-                      <Staleness count={staleCount} />
-                    </div>
-                  )}
-                </div>
-              );
-
-              if (!selected) return body;
-
-              /* SplitPane, not a bespoke frame. It already queries its OWN
-                 wrapper rather than the viewport, so dragging the client rail
-                 re-decides the split with the window never moving, and it
-                 stacks the panel under the table instead of crushing it when
-                 there is no room. The matrix's phase panel predates it and
-                 gates on 1080px, which is wider than the content column of a
-                 1400px laptop — the panel would simply never appear here. */
-              return (
-                <SplitPane
-                  pane="integPanel"
-                  label="Resize integration detail"
-                  main={body}
-                  rail={
+            {all.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  title="No integrations yet"
+                  hint="Integrations added for this client will appear here."
+                />
+              </div>
+            ) : (
+              /* THE LIST IS THE RAIL, the record is the main pane — the
+                 opposite of the table version, and `railSide="start"` is how
+                 SplitPane says so (it also moves the drag handle, so dragging
+                 right still widens the list). Below a 720px container the two
+                 stack, list above record, which is the only sensible order on
+                 a phone. */
+              <SplitPane
+                pane="integList"
+                railSide="start"
+                label="Resize integration list"
+                className="mt-4"
+                rail={
+                  <IntegrationList
+                    rows={shown}
+                    total={all.length}
+                    sort={sort}
+                    onSort={setSort}
+                    selectedId={selectedId}
+                    onSelect={pick}
+                    filtered={filter !== "all"}
+                  />
+                }
+                main={
+                  selected ? (
                     <IntegrationPanel
                       clientId={clientId}
                       integration={selected}
-                      onClose={() =>
-                        setSel({ clientId, integId: null })
-                      }
+                      // Clear the whole selection rather than marking it
+                      // closed: the record is gone, so the next render should
+                      // fall through to the first row that is still here.
+                      onArchived={() => setSel(null)}
                     />
-                  }
-                />
-              );
-            })()}
+                  ) : (
+                    <div className="k-card p-8">
+                      <EmptyState
+                        title="Nothing selected"
+                        hint="Choose an integration on the left to see its record."
+                      />
+                    </div>
+                  )
+                }
+              />
+            )}
           </>
         )}
       </QueryState>
@@ -388,19 +360,25 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
 }
 
 /**
- * A status filter chip.
+ * A status filter chip, now carrying its count.
+ *
+ * The count came off the Status mix card this replaced. It is the whole set at
+ * a glance — which is what the card was for — without a second block of screen
+ * repeating what the chips already name.
  *
  * The active look is tinted rather than the stylesheet's
  * `.k-chip[data-active="true"]`, which is a solid primary fill with white text.
  * 1c's chips are tinted, and a row of solid blue blocks would out-shout the
- * table they filter.
+ * list they filter.
  */
 function Chip({
   label,
+  count,
   active,
   onClick,
 }: {
   label: string;
+  count: number;
   active: boolean;
   onClick: () => void;
 }) {
@@ -416,330 +394,147 @@ function Chip({
       }`}
     >
       {label}
+      <span className={`k-mono ml-1 ${active ? "" : "text-k-mute"}`}>
+        ({count})
+      </span>
     </button>
   );
 }
 
 /**
- * Status mix — one bar, one segment per status actually present.
+ * The integration list: a column of selectable cards.
  *
- * Segment order follows STATUSES rather than descending count, so the bar for
- * one client can be compared against another's: a segment that moves position
- * between two clients is a segment you cannot compare by eye.
- */
-function StatusMix({ rows }: { rows: Integration[] }) {
-  const present = useMemo(() => {
-    const n: Record<string, number> = {};
-    for (const i of rows) n[i.status] = (n[i.status] ?? 0) + 1;
-    return STATUSES.filter((st) => n[st] > 0).map((st) => ({
-      status: st,
-      count: n[st],
-      fill: STATUS_COLORS[st].fill,
-    }));
-  }, [rows]);
-
-  return (
-    <div className="k-card min-w-[260px] flex-1 px-4 py-3.5">
-      <h2 className="k-eyebrow">Status mix</h2>
-      <div
-        className="my-3 flex h-2 gap-0.5 overflow-hidden rounded-full"
-        aria-hidden
-      >
-        {present.map((p) => (
-          <div key={p.status} style={{ flex: p.count, background: p.fill }} />
-        ))}
-      </div>
-      <ul className="flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-k-mute">
-        {present.map((p) => (
-          <li key={p.status}>
-            <span className="k-mono">{p.count}</span> {p.status}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/**
- * Staleness — how many integrations nobody has touched in a week.
+ * Replaces the six-column table. The fields that table carried are not lost —
+ * Status, Assignee, Due, Milestones and Updated are all in the record panel
+ * beside it, on the row they describe, rather than squeezed into a column each.
  *
- * The numeral is `--k-text-amber`, not the `--k-fill-warn` amber 1c draws.
- * #F59E0B is a fill: it fails AA as text on white, and
- * tests/design/token-usage.test.ts exists to stop exactly that substitution.
+ * The card geometry is the client rail's (`components/client-rail.tsx`), which
+ * already solved the fidgety part: a `border-l-[3px]` that is TRANSPARENT at
+ * rest rather than absent, so selecting a card shifts nothing sideways.
+ *
+ * Each card is a button, not a link. The record it selects opens beside it, and
+ * the full page is one click away in that record — where the link is a real
+ * anchor, so open-in-new-tab still exists in the one place anyone reaches for
+ * it. A link here would have needed a nested button, or a row that navigates
+ * away from the list it is part of.
  */
-function Staleness({ count }: { count: number }) {
-  return (
-    <div className="k-card w-[230px] px-4 py-3.5">
-      <h2 className="k-eyebrow">Staleness</h2>
-      <p
-        className={`k-num mt-2 text-[26px] ${
-          count > 0 ? "text-k-text-amber" : "text-k-ink-3"
-        }`}
-      >
-        {count}
-      </p>
-      <p className="mt-1.5 text-[11.5px] text-k-mute">
-        item{count === 1 ? "" : "s"} with no update in 7+ days
-      </p>
-    </div>
-  );
-}
-
-function IntegrationTable({
-  clientId,
+function IntegrationList({
   rows,
-  canEdit,
-  assignees,
+  total,
+  sort,
+  onSort,
   selectedId,
   onSelect,
-  compact,
+  filtered,
 }: {
-  clientId: string;
   rows: Integration[];
-  canEdit: boolean;
-  assignees: string[];
+  total: number;
+  sort: IntegSort;
+  onSort: (mode: IntegSort) => void;
   selectedId: string | null;
   onSelect: (integId: string) => void;
-  /** True while the detail panel is open — see the colgroup below. */
-  compact: boolean;
+  filtered: boolean;
 }) {
   return (
-    // Its own scroll container: the page body must never scroll sideways, and
-    // this table has six columns that cannot all fit on a phone.
-    <div className="k-card overflow-x-auto">
-      <table
-        className={`w-full border-collapse text-[12.5px] ${compact ? "min-w-[440px]" : "min-w-[720px]"}`}
+    <section className="k-card overflow-hidden" aria-label="Integrations">
+      <div className="flex items-center justify-between gap-2 border-b border-k-line-2 px-3.5 py-3">
+        <h2 className="k-eyebrow">
+          <span className="k-mono text-[13px] text-k-ink">{total}</span>{" "}
+          integration{total === 1 ? "" : "s"}
+        </h2>
+        <select
+          className="k-select k-input-sm w-[124px]"
+          aria-label="Sort integrations"
+          value={sort}
+          onChange={(e) => onSort(e.target.value as IntegSort)}
+        >
+          {INTEG_SORTS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyState
+          title={filtered ? "Nothing with that status" : "No integrations yet"}
+          hint={filtered ? "Clear the filter to see the rest." : undefined}
+        />
+      ) : (
+        <ul>
+          {rows.map((i) => (
+            <IntegrationCard
+              key={i.id}
+              integration={i}
+              selected={i.id === selectedId}
+              onSelect={() => onSelect(i.id)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function IntegrationCard({
+  integration: i,
+  selected,
+  onSelect,
+}: {
+  integration: Integration;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const overdue = isOverdue(i);
+  const reason = integRiskReason(i);
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected ? "true" : undefined}
+        className={`block w-full border-b border-l-[3px] border-b-k-line-2 px-3.5 py-3 text-left transition-colors ${
+          selected
+            ? "border-l-k-primary bg-k-primary/[.05]"
+            : "border-l-transparent hover:bg-k-surface"
+        }`}
       >
-        {/* 1c's column rhythm: 1fr / 130 / 118 / 96 / 92, with Milestones and
-            the archive column added — the artboard draws five columns, but
-            dropping either of ours would take real data off the screen.
-            `table-layout` is auto, so these are hints: a column whose content
-            genuinely will not fit still expands rather than clipping. */}
-        {/* PROPORTIONAL, not one flexible column and six fixed ones.
-            The Integration column used to be a bare `<col />`, so it absorbed
-            every pixel of slack: on a 1124px table it took 544px to hold a
-            90px title, leaving a canyon before Status — while Status and
-            Assignee, pinned at 130 and 118, truncated their own selects to
-            "On Hold —" and "Kavya (r". Percentages let all six grow together,
-            so the gap after a title stays in proportion at any width and the
-            controls stop being clipped. */}
-        {/* MILESTONES AND UPDATED STAND DOWN WHILE THE PANEL IS OPEN. Six
-            columns at a 720px floor inside a pane that is the table's share of
-            a split would scroll sideways, and a table you have to scroll to
-            read defeats the point of keeping the list beside the record. Both
-            are in the panel — where the row they describe is already open — so
-            nothing leaves the screen, and the remaining four take their share
-            of the width back. */}
-        <colgroup>
-          <col style={{ width: compact ? "46%" : "34%" }} />
-          <col style={{ width: compact ? "22%" : "15%" }} />
-          <col style={{ width: compact ? "20%" : "14%" }} />
-          <col style={{ width: compact ? "12%" : "12%" }} />
-          {!compact && <col style={{ width: "12%" }} />}
-          {!compact && <col style={{ width: "13%" }} />}
-          {canEdit && <col style={{ width: 44 }} />}
-        </colgroup>
-        <thead>
-          <tr className="k-thead">
-            <th className="px-4 py-[9px] text-left font-semibold">
-              Integration
-            </th>
-            <th className="px-4 py-[9px] text-left font-semibold">Status</th>
-            <th className="px-4 py-[9px] text-left font-semibold">Assignee</th>
-            <th className="px-4 py-[9px] text-left font-semibold">Due</th>
-            {!compact && (
-              <th className="px-4 py-[9px] text-left font-semibold">
-                Milestones
-              </th>
-            )}
-            {!compact && (
-              <th className="px-4 py-[9px] text-left font-semibold">Updated</th>
-            )}
-            {canEdit && <th className="px-4 py-[9px]" />}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((i) => {
-            const overdue = isOverdue(i);
-            const stale = isStale(i);
-            const reason = integRiskReason(i);
-            const ms = integMilestoneCounts(i);
-            const last = lastUpdateDate(i);
+        <div className="flex items-baseline justify-between gap-2">
+          <span
+            className={`min-w-0 truncate text-[13px] font-semibold ${
+              selected ? "text-k-primary" : "text-k-ink"
+            }`}
+          >
+            {i.name}
+          </span>
+          <span
+            className={`k-mono shrink-0 text-[11px] ${
+              overdue ? "font-semibold text-k-text-red" : "text-k-mute"
+            }`}
+          >
+            {i.dueDate ? fmtDate(i.dueDate) : "—"}
+          </span>
+        </div>
 
-            const isSelected = i.id === selectedId;
+        <p className="mt-0.5 truncate text-[11.5px] text-k-mute">
+          {i.description || "—"}
+        </p>
 
-            return (
-              /**
-               * THE ROW SELECTS; THE NAME STILL NAVIGATES.
-               *
-               * Clicking anywhere in the row opens the panel beside the table,
-               * which is what you want while comparing rows. The name stays an
-               * anchor to the full record, so the existing route, middle-click,
-               * open-in-new-tab and copy-link-address all keep working — a
-               * div-with-an-onClick would have quietly taken all four away.
-               * `stopPropagation` on the cell keeps the two from firing at once.
-               */
-              <tr
-                key={i.id}
-                onClick={() => onSelect(i.id)}
-                aria-selected={isSelected}
-                className={`k-row cursor-pointer ${
-                  isSelected
-                    ? "bg-k-primary/[.06]"
-                    : "k-row-hover"
-                }`}
-              >
-                <td
-                  className="px-4 py-[11px]"
-                  style={
-                    isSelected
-                      ? { boxShadow: "inset 3px 0 0 0 var(--k-primary)" }
-                      : undefined
-                  }
-                >
-                  <Link
-                    href={`/integrations/${clientId}/${encodeURIComponent(i.id)}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="font-semibold text-k-ink hover:text-k-primary hover:underline"
-                  >
-                    {i.name}
-                  </Link>
-                  {reason && (
-                    <span
-                      className="mt-0.5 flex items-center gap-1 text-[11px] text-k-text-red"
-                      title={reason}
-                    >
-                      <AlertTriangle size={11} strokeWidth={1.5} aria-hidden />
-                      {reason}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-[11px]">
-                  {canEdit ? (
-                    <InlineSelect
-                      target={{
-                        kind: "integration",
-                        clientId,
-                        id: i.id,
-                        path: `/api/integrations/${encodeURIComponent(i.id)}`,
-                        screen: "integrations",
-                      }}
-                      field="status"
-                      label={`Status for ${i.name}`}
-                      value={i.status}
-                      options={STATUSES}
-                      version={i._v}
-                      before={i}
-                    />
-                  ) : (
-                    <StatusPill status={i.status} size="sm" />
-                  )}
-                </td>
-                <td className="px-4 py-[11px] text-k-ink-3">
-                  {canEdit ? (
-                    <InlineSelect
-                      target={{
-                        kind: "integration",
-                        clientId,
-                        id: i.id,
-                        path: `/api/integrations/${encodeURIComponent(i.id)}`,
-                        screen: "integrations",
-                      }}
-                      field="assignee"
-                      label={`Assignee for ${i.name}`}
-                      value={i.assignee ?? ""}
-                      options={assignees}
-                      emptyLabel="Unassigned"
-                      unknownSuffix="(not a current user)"
-                      nullable
-                      version={i._v}
-                      before={i}
-                    />
-                  ) : (
-                    i.assignee || (
-                      <span className="text-k-mute">Unassigned</span>
-                    )
-                  )}
-                </td>
-                <td className="px-4 py-[11px]">
-                  {i.dueDate ? (
-                    // Just the date, per 1c. The days-late count lives on the
-                    // risk line under the integration's name — printing it in
-                    // both places is what pushed this cell onto three lines and
-                    // the row to half again its designed height.
-                    <span
-                      className={`k-mono whitespace-nowrap text-[11px] ${
-                        overdue
-                          ? "font-semibold text-k-text-red"
-                          : "text-k-ink-3"
-                      }`}
-                    >
-                      {fmtDate(i.dueDate)}
-                    </span>
-                  ) : (
-                    <span className="text-k-mute">—</span>
-                  )}
-                </td>
-                {!compact && (
-                <td className="px-4 py-[11px]">
-                  {ms.total === 0 ? (
-                    <span className="text-k-mute">—</span>
-                  ) : (
-                    <span className="k-mono text-[11.5px] text-k-ink-3">
-                      {ms.achieved}/{ms.total}
-                      {ms.missed > 0 && (
-                        <span className="ml-1 text-k-text-red">
-                          · {ms.missed} missed
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </td>
-                )}
-                {!compact && (
-                <td className="px-4 py-[11px]">
-                  {last ? (
-                    <span
-                      className={`k-mono whitespace-nowrap text-[11px] ${
-                        stale ? "text-k-text-amber" : "text-k-mute"
-                      }`}
-                      title={stale ? "No update in over a week" : undefined}
-                    >
-                      {stale && (
-                        <Clock
-                          size={11}
-                          strokeWidth={1.5}
-                          aria-hidden
-                          className="mr-1 inline align-[-1px]"
-                        />
-                      )}
-                      {fmtDate(last)}
-                    </span>
-                  ) : (
-                    <span className="text-k-mute">Never</span>
-                  )}
-                </td>
-                )}
-                {canEdit && (
-                  <td className="px-4 py-[11px]" onClick={(e) => e.stopPropagation()}>
-                    <ArchiveButton
-                      path={`/api/integrations/${encodeURIComponent(i.id)}`}
-                      version={i._v}
-                      label={i.name}
-                      cascade={
-                        ms.total > 0
-                          ? `Its ${ms.total} milestone${ms.total === 1 ? "" : "s"} go with it.`
-                          : undefined
-                      }
-                      screen="integrations"
-                    />
-                  </td>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <StatusPill status={i.status} size="sm" />
+          {/* The reference has no room for this and this tracker cannot do
+              without it: worst-first ordering is meaningless if the reason a
+              row is first is invisible. */}
+          {reason && (
+            <span className="flex items-center gap-1 text-[11px] text-k-text-red">
+              <AlertTriangle size={11} strokeWidth={1.5} aria-hidden />
+              {reason}
+            </span>
+          )}
+        </div>
+      </button>
+    </li>
   );
 }

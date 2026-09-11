@@ -1,5 +1,6 @@
 import { daysDiff, todayStr } from "@/lib/utils/dates";
 import type { Client, Integration, Milestone, Rag } from "./types";
+import { STATUSES } from "./constants";
 
 /**
  * Integration health, ported from js/core.js:237-270.
@@ -195,6 +196,93 @@ export function isDueWithin(
   if (d === null) return false;
   // d is negative for future dates; -days..0 is "within the window".
   return d <= 0 && d >= -days;
+}
+
+/* ------------------------------------------------------------------ sorting */
+
+export type IntegSort = "worst" | "name" | "due" | "status";
+
+/** What the sort control offers, in the order it offers it. */
+export const INTEG_SORTS: { value: IntegSort; label: string }[] = [
+  { value: "worst", label: "Worst first" },
+  { value: "name", label: "Name" },
+  { value: "due", label: "Due date" },
+  { value: "status", label: "Status" },
+];
+
+/**
+ * Order the integration list.
+ *
+ * `worst` delegates to `sortIntegWorstFirst` rather than reimplementing it:
+ * that ranking is what the RAG, the dashboard's critical items and this list
+ * all agree on, and a second copy here would drift from the other two.
+ *
+ * EVERY MODE BREAKS ITS TIE ON NAME, so the order is total. Leaving ties to the
+ * engine's sort is stable per-run but not per-dataset — re-filtering the list
+ * would reshuffle equal rows under the reader's cursor for no visible reason.
+ *
+ * `due` puts the soonest first and undated rows LAST. An empty date sorting as
+ * the epoch would stack every undated row at the top of a list whose whole job
+ * is "what needs attention", which is the opposite of what it means.
+ */
+export function sortIntegrations(
+  integs: Integration[],
+  mode: IntegSort,
+  now?: Date,
+): Integration[] {
+  if (mode === "worst") return sortIntegWorstFirst(integs, now);
+
+  const byName = (a: Integration, b: Integration) =>
+    a.name.localeCompare(b.name);
+
+  if (mode === "name") return [...integs].sort(byName);
+
+  if (mode === "due") {
+    return [...integs].sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return byName(a, b);
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate.localeCompare(b.dueDate) || byName(a, b);
+    });
+  }
+
+  // STATUSES order, not alphabetical: it is the app's canonical progression and
+  // the same order the filter chips above the list are drawn in.
+  return [...integs].sort(
+    (a, b) =>
+      STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status) || byName(a, b),
+  );
+}
+
+/* ------------------------------------------------------------- effort scale */
+
+/**
+ * The effort weights offered in the UI, with names.
+ *
+ * `effortWeight` is a free `z.number().positive().max(100)` in the schema and a
+ * bare `numeric` in the column — nothing constrains it and nothing had ever
+ * named it. These four are the only values in the data, the ones the golden
+ * fixtures pick from, and they mean something concrete: `teamBandwidth` costs a
+ * module at 1 against a per-person ceiling of 5, so 1 is "a module's worth".
+ *
+ * The list is OFFERED, not enforced. A row holding some other weight keeps it
+ * and stays editable — `InlineSelect` re-inserts an unrecognised value rather
+ * than snapping it to the nearest option behind the user's back.
+ */
+export const EFFORT_STEPS: { value: string; label: string }[] = [
+  { value: "0.25", label: "Light — 0.25" },
+  { value: "0.5", label: "Medium — 0.5" },
+  { value: "1", label: "Heavy — 1" },
+  { value: "2", label: "Very heavy — 2" },
+];
+
+/** The label for a weight, or the bare number when it is not one of the four. */
+export function effortLabel(weight: number | undefined): string {
+  if (weight == null) return "—";
+  // Matched numerically, not by string: the column is `numeric`, so what comes
+  // back is not guaranteed to be spelled "0.5".
+  const step = EFFORT_STEPS.find((s) => Number(s.value) === weight);
+  return step ? step.label : String(weight);
 }
 
 /**

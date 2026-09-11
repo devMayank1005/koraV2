@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, X, Zap } from "lucide-react";
+import { ArrowRight, Calendar, Zap } from "lucide-react";
 import { StatusPill } from "@/components/ui/status";
 import { InlineSelect } from "@/components/ui/inline";
+import { ArchiveButton } from "@/components/ui/archive-button";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { fmtDate } from "@/lib/utils/dates";
 import { STATUSES } from "@/lib/domain/constants";
@@ -12,35 +13,32 @@ import {
   daysOverdue,
   integMilestoneCounts,
   lastUpdateDate,
+  effortLabel,
+  EFFORT_STEPS,
 } from "@/lib/domain/integrations";
 import type { Integration } from "@/lib/domain/types";
 
 /**
- * One integration, beside the table rather than instead of it.
+ * One integration's record, beside the list rather than instead of it.
  *
- * Reading a record used to mean a full-route navigation to `[integId]`, which
- * threw away the list you were reading it against — the same mistake the
- * implementation matrix already fixed with its phase panel, and this is
- * deliberately built to that shape.
+ * A SUMMARY, NOT THE RECORD, and the footer says so rather than leaving you to
+ * find out. The full page keeps everything that needs room — milestone editing,
+ * the update composer, attachments — and rebuilding those here would be a
+ * second implementation of rules that already exist in one place.
  *
- * A SUMMARY, NOT THE RECORD. The full page keeps everything that needs room:
- * milestone editing, the update composer, attachments. What is here is what you
- * want while comparing rows — the two fields the table has never shown
- * (`nextAction` and `description`), the numbers, and the last few updates —
- * with one link out. Rebuilding milestone management at 320px would be a second
- * implementation of rules that already exist in one place.
- *
- * Status and assignee stay editable, exactly as they are in the row and in the
- * phase panel, through the same `useUpdateEntity` path.
+ * What is here is what you want while moving down the list: the two fields the
+ * table never had room for (`nextAction`, `description`), the numbers, the last
+ * few updates, and the three things worth changing without leaving the screen.
  */
 export function IntegrationPanel({
   clientId,
   integration,
-  onClose,
+  onArchived,
 }: {
   clientId: string;
   integration: Integration;
-  onClose: () => void;
+  /** Clear the selection — the record it pointed at is gone. */
+  onArchived: () => void;
 }) {
   const canEdit = useCanEdit();
   const assignees = useAssigneeOptions(integration.assignee);
@@ -48,6 +46,8 @@ export function IntegrationPanel({
   const ms = integMilestoneCounts(integration);
   const last = lastUpdateDate(integration);
   const overdue = isOverdue(integration);
+  const href = `/integrations/${encodeURIComponent(clientId)}/${encodeURIComponent(integration.id)}`;
+
   const target = {
     kind: "integration" as const,
     clientId,
@@ -56,40 +56,60 @@ export function IntegrationPanel({
     screen: "integrations" as const,
   };
 
-  // Three, not all of them. The feed on the full page is the place to read a
-  // history; this is here to answer "is anyone on it".
+  // Three, not all of them. The full record is where a history is read; this
+  // answers "has anyone touched it".
   const recent = (integration.timeline ?? []).slice(0, 3);
 
   return (
-    // Width comes from SplitPane's rail, which owns the drag; taking a width
-    // prop as well would give the pane two sources of truth for one number.
-    <aside className="k-card p-4" aria-label="Integration detail">
-      <div className="flex items-start justify-between gap-2">
-        <p className="k-eyebrow">Selected integration</p>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close integration detail"
-          className="k-btn k-btn-ghost k-btn-sm !px-1.5"
-        >
-          <X size={14} strokeWidth={1.5} />
-        </button>
+    <section
+      className="k-card k-record-panel p-5"
+      aria-label={`${integration.name} record`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <StatusPill status={integration.status} />
+        <div className="flex items-center gap-2">
+          {/* ARCHIVE LIVES HERE NOW. It was the table's last column, and the
+              full record page has never had one — dropping it with the table
+              would have left no way to archive an integration anywhere in the
+              app. Beside the record it acts on is where it belonged anyway. */}
+          {canEdit && (
+            <ArchiveButton
+              path={target.path}
+              version={integration._v}
+              label={integration.name}
+              cascade={
+                ms.total > 0
+                  ? `Its ${ms.total} milestone${ms.total === 1 ? "" : "s"} go with it.`
+                  : undefined
+              }
+              onArchived={onArchived}
+              screen="integrations"
+            />
+          )}
+          <Link href={href} className="k-btn k-btn-primary k-btn-sm">
+            Open full record
+            <ArrowRight size={13} strokeWidth={1.5} aria-hidden />
+          </Link>
+        </div>
       </div>
 
-      <h2 className="mt-2 text-[16px] font-bold leading-tight text-k-primary">
+      <hr className="my-4 border-k-line-2" />
+
+      <h2 className="text-[20px] font-bold leading-tight text-k-ink">
         {integration.name}
       </h2>
       {integration.description && (
-        <p className="mt-1 text-[12px] leading-[1.55] text-k-mute">
+        <p className="mt-2 text-[13px] leading-[1.55] text-k-mute">
           {integration.description}
         </p>
       )}
 
-      {/* The one thing a status cannot tell you: what happens next. It is a
-          real field on every integration and the table has never had room for
-          it, which is most of why opening a record was worth a navigation. */}
+      {/* The one thing a status cannot tell you: what happens next. A real
+          field on every integration that no list has ever had room for, which
+          is most of why opening a record was worth a navigation. The reference
+          draws a lightning bolt emoji here; house rule is Lucide. */}
       {integration.nextAction && (
-        <section className="k-callout mt-3.5">
+        <section className="k-callout mt-4">
           <h3 className="k-eyebrow flex items-center gap-1.5">
             <Zap size={12} strokeWidth={1.5} aria-hidden />
             Next action
@@ -100,8 +120,8 @@ export function IntegrationPanel({
         </section>
       )}
 
-      <dl className="mt-4">
-        <PanelField label="Status">
+      <dl className="k-panel-grid mt-5">
+        <Box label="Status">
           {canEdit ? (
             <InlineSelect
               target={target}
@@ -113,11 +133,11 @@ export function IntegrationPanel({
               before={integration}
             />
           ) : (
-            <StatusPill status={integration.status} size="sm" />
+            <span className="k-field">{integration.status}</span>
           )}
-        </PanelField>
+        </Box>
 
-        <PanelField label="Assignee">
+        <Box label="Assignee">
           {canEdit ? (
             <InlineSelect
               target={target}
@@ -132,98 +152,143 @@ export function IntegrationPanel({
               before={integration}
             />
           ) : (
-            integration.assignee || <span className="text-k-mute">Unassigned</span>
-          )}
-        </PanelField>
-
-        <PanelField label="Due date">
-          {integration.dueDate ? (
-            <span
-              className={`k-mono text-[11.5px] ${overdue ? "font-semibold text-k-text-red" : ""}`}
-            >
-              {fmtDate(integration.dueDate)}
-              {overdue && (
-                <span className="ml-1.5 font-semibold">
-                  {daysOverdue(integration)}d late
-                </span>
+            <span className="k-field">
+              {integration.assignee || (
+                <span className="text-k-mute">Unassigned</span>
               )}
             </span>
-          ) : (
-            <span className="text-k-mute">—</span>
           )}
-        </PanelField>
+        </Box>
 
-        <PanelField label="Effort load">
-          {integration.effortWeight != null ? (
-            <span className="k-mono text-[11.5px]">
-              {integration.effortWeight}
-            </span>
-          ) : (
-            <span className="text-k-mute">—</span>
-          )}
-        </PanelField>
-
-        <PanelField label="Last update">
-          {last ? (
-            <span className="k-mono text-[11.5px]">{fmtDate(last)}</span>
-          ) : (
-            <span className="text-k-mute">Never</span>
-          )}
-        </PanelField>
-
-        <PanelField label="Milestones">
-          {ms.total ? (
-            <span className="k-mono text-[11.5px]">
-              {ms.achieved}/{ms.total}
-              {ms.missed > 0 && (
-                <span className="ml-1.5 text-k-text-red">
-                  {ms.missed} missed
+        <Box label="Due date">
+          <span
+            className={`k-field gap-1.5 ${overdue ? "text-k-text-red" : ""}`}
+          >
+            <Calendar
+              size={13}
+              strokeWidth={1.5}
+              aria-hidden
+              className="shrink-0 text-k-mute"
+            />
+            {integration.dueDate ? (
+              <>
+                <span className="k-mono text-[12px]">
+                  {fmtDate(integration.dueDate)}
                 </span>
-              )}
-            </span>
+                {overdue && (
+                  <span className="text-[11.5px] font-semibold">
+                    {daysOverdue(integration)}d late
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-k-mute">—</span>
+            )}
+          </span>
+        </Box>
+
+        <Box label="Effort load">
+          {canEdit ? (
+            <InlineSelect
+              target={target}
+              field="effortWeight"
+              label={`Effort load for ${integration.name}`}
+              // A NUMBER field: the select must post 0.5, not "0.5", or the
+              // schema's z.number() rejects it. See `kind` in ui/inline.tsx.
+              kind="number"
+              value={
+                integration.effortWeight != null
+                  ? String(integration.effortWeight)
+                  : ""
+              }
+              options={EFFORT_STEPS.map((s) => s.value)}
+              optionLabel={(v) => effortLabel(Number(v))}
+              unknownSuffix="(custom)"
+              version={integration._v}
+              before={integration}
+            />
           ) : (
-            <span className="text-k-mute">None</span>
+            <span className="k-field">{effortLabel(integration.effortWeight)}</span>
           )}
-        </PanelField>
+        </Box>
+
+        <Box label="Last update">
+          <span className="k-field">
+            {last ? (
+              <span className="k-mono text-[12px]">{fmtDate(last)}</span>
+            ) : (
+              <span className="text-k-mute">Never</span>
+            )}
+          </span>
+        </Box>
+
+        <Box label="Milestones">
+          <span className="k-field gap-1.5">
+            {ms.total ? (
+              <>
+                <span className="k-mono text-[12px]">
+                  {ms.achieved}/{ms.total}
+                </span>
+                {ms.missed > 0 && (
+                  <span className="text-[11.5px] text-k-text-red">
+                    {ms.missed} missed
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-k-mute">No milestones</span>
+            )}
+          </span>
+        </Box>
       </dl>
 
-      <h3 className="k-eyebrow mt-5">Recent activity</h3>
+      <h3 className="k-eyebrow mt-6">Recent activity feed</h3>
       {recent.length ? (
         <ul className="mt-2 space-y-2">
           {recent.map((e) => (
-            <li
-              key={e.id}
-              className="border-b border-k-line-2 pb-2 last:border-b-0 last:pb-0"
-            >
-              <p className="k-mono text-[10.5px] text-k-mute">
+            <li key={e.id} className="k-field k-field-block">
+              <p className="k-mono text-[11px] text-k-mute">
                 {fmtDate(e.date)}
                 {e.addedBy && <> · {e.addedBy}</>}
               </p>
-              <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-[12px] leading-[1.5] text-k-ink-3">
-                {e.update}
-              </p>
+              {e.update && (
+                <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-[12.5px] text-k-ink-3">
+                  {e.update}
+                </p>
+              )}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-[12px] text-k-mute">No updates yet.</p>
+        <p className="mt-2 text-[12.5px] text-k-mute">No updates yet.</p>
       )}
 
-      {/* The route survives untouched. This panel is the fast read; the page is
-          where milestones, attachments and the composer live. */}
-      <Link
-        href={`/integrations/${encodeURIComponent(clientId)}/${encodeURIComponent(integration.id)}`}
-        className="k-btn k-btn-outline k-btn-sm mt-5 w-full justify-center"
-      >
-        Open full record
-        <ArrowRight size={13} strokeWidth={1.5} aria-hidden />
-      </Link>
-    </aside>
+      <hr className="mt-5 border-k-line-2" />
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[12px] text-k-mute">
+          Detailed timeline history and milestone configurations reside in the
+          full record.
+        </p>
+        <Link
+          href={href}
+          className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-k-primary hover:underline"
+        >
+          View record
+          <ArrowRight size={13} strokeWidth={1.5} aria-hidden />
+        </Link>
+      </div>
+    </section>
   );
 }
 
-/** Label left, value right, hairline between — the phase panel's row. */
-function PanelField({
+/**
+ * An uppercase label over a bordered value box.
+ *
+ * `.k-label` + `.k-field` are both already in the stylesheet at exactly this
+ * spec — the same pairing the full record's Field uses — so this is a
+ * composition, not a new component's worth of styling.
+ */
+function Box({
   label,
   children,
 }: {
@@ -231,11 +296,9 @@ function PanelField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-k-line-2 py-2.5 last:border-b-0">
-      <dt className="shrink-0 text-[11.5px] text-k-mute">{label}</dt>
-      <dd className="min-w-0 truncate text-right text-[12px] font-semibold text-k-ink">
-        {children}
-      </dd>
+    <div className="min-w-0">
+      <dt className="k-label">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
     </div>
   );
 }

@@ -493,6 +493,49 @@
     }
   }
 
+  /* The record panel is its own container.
+     Without this the grid below would resolve against .k-split-container — the
+     width of the WHOLE split, list included — and lay out three columns in a
+     panel that has room for one. The query has to be asked of the box the grid
+     actually lives in. */
+  .k-record-panel {
+    container-type: inline-size;
+  }
+
+  /* The record panel's field grid.
+     A CONTAINER QUERY, like .k-split above it and for the same reason: the
+     panel sits beside a rail the user can drag, so its width has nothing to do
+     with the window's. It is a class rather than `@container` utilities because
+     .k-kpi-strip already had to become one — Tailwind emits custom breakpoints
+     ahead of the built-ins, and at equal specificity source order decided the
+     fight, silently. */
+  .k-panel-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container (min-width: 460px) {
+    .k-panel-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container (min-width: 700px) {
+    .k-panel-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  /* A .k-field that holds a value taller than one line — the activity feed's
+     entries, a wrapped next action. Same box, no fixed height. */
+  .k-field-block {
+    display: block;
+    height: auto;
+    padding: 10px;
+    line-height: 1.5;
+  }
+
   .k-page {
     max-width: var(--k-page-max);
     margin-inline: auto;

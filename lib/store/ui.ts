@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { create } from "zustand";
+import type { IntegSort } from "@/lib/domain/integrations";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 /**
@@ -50,7 +51,7 @@ export type PaneId =
   | "rail"
   | "phasePanel"
   | "integDetail"
-  | "integPanel"
+  | "integList"
   | "phaseDetail"
   | "amsRail";
 
@@ -70,7 +71,7 @@ export const PANES: Record<
   rail: { min: 200, max: 420, def: 268, collapseAt: 170 },
   phasePanel: { min: 260, max: 680, def: 300, collapseAt: 220 },
   integDetail: { min: 240, max: 480, def: 300, collapseAt: 210 },
-  integPanel: { min: 260, max: 520, def: 320, collapseAt: 230 },
+  integList: { min: 260, max: 420, def: 320, collapseAt: 230 },
   phaseDetail: { min: 220, max: 440, def: 250, collapseAt: 190 },
   amsRail: { min: 240, max: 480, def: 300, collapseAt: 210 },
 };
@@ -91,8 +92,17 @@ interface UiState {
   recent: RecentItem[];
   pushRecent: (item: RecentItem) => void;
 
-  /** Pane widths in px. Always clamped to that pane's range. */
-  paneWidths: Record<PaneId, number>;
+  /**
+   * Pane widths in px, always clamped to that pane's range.
+   *
+   * PARTIAL, and that is the honest type rather than a defensive one. `persist`
+   * merges the stored envelope over the initial state SHALLOWLY, so a stored
+   * `paneWidths` written before a pane existed replaces the complete default
+   * object with an incomplete one — every browser that used the app before a
+   * new pane was added is missing that key. Typing it `Record` told the
+   * compiler every pane was present and hid exactly that.
+   */
+  paneWidths: Partial<Record<PaneId, number>>;
   /** Panes the user has shut. The sidebar keeps its own older flag. */
   paneClosed: Partial<Record<PaneId, boolean>>;
   setPaneWidth: (id: PaneId, px: number) => void;
@@ -114,6 +124,10 @@ interface UiState {
   lastIntegration: Record<string, string>;
   rememberIntegrationsClient: (clientId: string) => void;
   rememberIntegration: (clientId: string, integId: string) => void;
+
+  /** How the integration list is ordered. A view preference, so it persists. */
+  integSort: IntegSort;
+  setIntegSort: (mode: IntegSort) => void;
 
   /** Admin-only preview of a lesser role. Memory-only — see below. */
   viewAsRole: "editor" | "viewer" | null;
@@ -162,6 +176,9 @@ export const useUi = create<UiState>()(
           lastIntegration: { ...s.lastIntegration, [clientId]: integId },
         })),
 
+      integSort: "worst",
+      setIntegSort: (mode) => set({ integSort: mode }),
+
       viewAsRole: null,
       setViewAsRole: (r) => set({ viewAsRole: r }),
     }),
@@ -185,6 +202,7 @@ export const useUi = create<UiState>()(
         paneClosed: s.paneClosed,
         lastIntegrationsClient: s.lastIntegrationsClient,
         lastIntegration: s.lastIntegration,
+        integSort: s.integSort,
       }),
       /**
        * STILL 1, and deliberately so. There is no `migrate` here, and zustand

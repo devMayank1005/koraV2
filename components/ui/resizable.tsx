@@ -49,7 +49,7 @@ export function ResizeHandle({
    */
   onCollapse?: () => void;
 }) {
-  const width = useUi((s) => s.paneWidths[pane]);
+  const width = useUi((s) => s.paneWidths[pane]) ?? PANES[pane].def;
   const setPaneWidth = useUi((s) => s.setPaneWidth);
   const resetPane = useUi((s) => s.resetPane);
   const setPaneClosed = useUi((s) => s.setPaneClosed);
@@ -171,7 +171,15 @@ export function usePaneWidth(pane: PaneId): {
   open: () => void;
   toggle: () => void;
 } {
-  const stored = useUi((s) => s.paneWidths[pane]);
+  /**
+   * THE FALLBACK IS NOT DEFENSIVE, it is the difference between a pane and no
+   * pane. `persist` replaces the whole `paneWidths` object with the stored one,
+   * so a browser that saved widths before this pane existed has no key for it —
+   * `width` came out `undefined`, `--k-split-rail` became `undefinedpx`, and an
+   * invalid custom property leaves the rail with no width at all. Every pane
+   * added after a user's first visit had this problem, not just the newest.
+   */
+  const stored = useUi((s) => s.paneWidths[pane]) ?? PANES[pane].def;
   const closed = useUi((s) => Boolean(s.paneClosed[pane]));
   const setPaneClosed = useUi((s) => s.setPaneClosed);
   const togglePaneClosed = useUi((s) => s.togglePaneClosed);

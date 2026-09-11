@@ -71,6 +71,8 @@ export function InlineSelect<T extends object>({
   optionDisabled,
   nullable,
   hint,
+  kind = "text",
+  optionLabel,
 }: {
   target: Target;
   field: keyof T & string;
@@ -109,6 +111,24 @@ export function InlineSelect<T extends object>({
   nullable?: boolean;
   /** Explains a disabled option, next to the control. */
   hint?: React.ReactNode;
+  /**
+   * SEND A NUMBER, for a column that is one.
+   *
+   * `buildPatch` does not coerce — `NUMERIC_FIELDS` there only skips a write
+   * when two numbers are already equal — so a select over `effortWeight` would
+   * post the string "0.5" into `z.number().positive()` and take a 400. The
+   * text editor beside this has had the same switch since it was written; this
+   * is that, for a fixed set of values rather than typed ones.
+   */
+  kind?: "text" | "number";
+  /**
+   * What an option READS as, when the stored value is not a sentence.
+   *
+   * "0.5" is a weight, not a label. The option's value is still the stored one,
+   * so an unrecognised value keeps working: it is offered as itself and marked
+   * with `unknownSuffix` rather than being snapped to the nearest named step.
+   */
+  optionLabel?: (value: string) => string;
 }) {
   const onFailure = useSaveFeedback();
   const update = useUpdateEntity(target.kind, target.clientId, target.id, {
@@ -136,7 +156,17 @@ export function InlineSelect<T extends object>({
       title={version ? undefined : "Reload to edit this"}
       onChange={(e) => {
         const raw = e.target.value;
-        const next = nullable && raw === "" ? null : raw;
+        const cleared = nullable && raw === "";
+        // Empty is only ever null or "", never NaN: `Number("")` is 0, which
+        // would silently write a real zero where the user meant "clear it".
+        const next = cleared
+          ? null
+          : kind === "number"
+            ? Number(raw)
+            : raw;
+        if (kind === "number" && !cleared && !Number.isFinite(next as number)) {
+          return;
+        }
         const patch = buildPatch(before, { [field]: next } as never, [field]);
         if (!Object.keys(patch).length || !version) return;
         update.mutate({ version, patch });
@@ -151,7 +181,7 @@ export function InlineSelect<T extends object>({
           // both directions once it got there.
           disabled={o !== value && optionDisabled?.(o)}
         >
-          {o === "" ? emptyLabel : o}
+          {o === "" ? emptyLabel : (optionLabel?.(o) ?? o)}
           {o === value && !known ? ` ${unknownSuffix}` : ""}
         </option>
       ))}
