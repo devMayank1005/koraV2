@@ -197,4 +197,25 @@ export function isDueWithin(
   return d <= 0 && d >= -days;
 }
 
+/**
+ * Which row to open when a screen lands on nothing in particular.
+ *
+ * The rule is "where you were, if it is still there". A remembered id is a
+ * pointer into data that moves: the client you had open can be archived, the
+ * integration you last read can be deleted, and both are read out of
+ * localStorage that may be weeks old. Trusting one blindly means landing on an
+ * empty screen with no explanation, which is worse than landing on the first
+ * row — so the fallback is not optional and is not a detail to be re-written
+ * inline at each call site.
+ *
+ * Returns undefined only when there is genuinely nothing to select.
+ */
+export function pickLanding(
+  remembered: string | undefined,
+  ids: string[],
+): string | undefined {
+  if (remembered && ids.includes(remembered)) return remembered;
+  return ids[0];
+}
+
 export { todayStr };

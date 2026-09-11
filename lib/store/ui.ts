@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
@@ -49,6 +50,7 @@ export type PaneId =
   | "rail"
   | "phasePanel"
   | "integDetail"
+  | "integPanel"
   | "phaseDetail"
   | "amsRail";
 
@@ -68,6 +70,7 @@ export const PANES: Record<
   rail: { min: 200, max: 420, def: 268, collapseAt: 170 },
   phasePanel: { min: 260, max: 680, def: 300, collapseAt: 220 },
   integDetail: { min: 240, max: 480, def: 300, collapseAt: 210 },
+  integPanel: { min: 260, max: 520, def: 320, collapseAt: 230 },
   phaseDetail: { min: 220, max: 440, def: 250, collapseAt: 190 },
   amsRail: { min: 240, max: 480, def: 300, collapseAt: 210 },
 };
@@ -96,6 +99,21 @@ interface UiState {
   togglePaneClosed: (id: PaneId) => void;
   setPaneClosed: (id: PaneId, closed: boolean) => void;
   resetPane: (id: PaneId) => void;
+
+  /**
+   * WHERE YOU WERE, so landing on a tracker lands on work rather than on a
+   * chooser. `/integrations` with no client picked redirects to this one, and
+   * opening a client reopens the record you last had open in it.
+   *
+   * Ids, not objects: a remembered client or integration can be archived
+   * between visits, so every read goes through `pickLanding`, which falls back
+   * to the first row rather than rendering an empty screen.
+   */
+  lastIntegrationsClient?: string;
+  /** clientId -> integId. Per client, because "where I was" is per client. */
+  lastIntegration: Record<string, string>;
+  rememberIntegrationsClient: (clientId: string) => void;
+  rememberIntegration: (clientId: string, integId: string) => void;
 
   /** Admin-only preview of a lesser role. Memory-only — see below. */
   viewAsRole: "editor" | "viewer" | null;
@@ -135,6 +153,15 @@ export const useUi = create<UiState>()(
           paneClosed: { ...s.paneClosed, [id]: false },
         })),
 
+      lastIntegrationsClient: undefined,
+      lastIntegration: {},
+      rememberIntegrationsClient: (clientId) =>
+        set({ lastIntegrationsClient: clientId }),
+      rememberIntegration: (clientId, integId) =>
+        set((s) => ({
+          lastIntegration: { ...s.lastIntegration, [clientId]: integId },
+        })),
+
       viewAsRole: null,
       setViewAsRole: (r) => set({ viewAsRole: r }),
     }),
@@ -156,6 +183,8 @@ export const useUi = create<UiState>()(
         recent: s.recent,
         paneWidths: s.paneWidths,
         paneClosed: s.paneClosed,
+        lastIntegrationsClient: s.lastIntegrationsClient,
+        lastIntegration: s.lastIntegration,
       }),
       /**
        * STILL 1, and deliberately so. There is no `migrate` here, and zustand
@@ -267,4 +296,33 @@ function legacyKind(view: string | undefined): RecentItem["kind"] {
 export function useEffectiveRole(realRole: string): string {
   const viewAsRole = useUi((s) => s.viewAsRole);
   return realRole === "admin" && viewAsRole ? viewAsRole : realRole;
+}
+
+/**
+ * Has the stored slice actually arrived?
+ *
+ * `persist` DOES NOT REHYDRATE BEFORE THE FIRST RENDER, and anything that makes
+ * a decision from a stored value has to know that. The first render sees the
+ * initial state — `lastIntegrationsClient` undefined — and the stored value
+ * lands a tick later.
+ *
+ * That is harmless for a pane width, which simply animates from its default to
+ * the stored one. It is not harmless for a decision you cannot take twice: the
+ * integrations landing read "no remembered client", redirected to the first
+ * one, and was then told the real answer and redirected again. Two competing
+ * `router.replace` calls, and the screen sat on a skeleton.
+ *
+ * Read through `useSyncExternalStore` rather than an effect for the usual
+ * reason — no tearing, no extra render — with a server snapshot of `false`,
+ * since nothing is hydrated during SSR by definition.
+ */
+const subscribeHydration = (onChange: () => void) =>
+  useUi.persist.onFinishHydration(onChange);
+
+const hydrated = () => useUi.persist.hasHydrated();
+
+const hydratedOnServer = () => false;
+
+export function useUiHydrated(): boolean {
+  return useSyncExternalStore(subscribeHydration, hydrated, hydratedOnServer);
 }

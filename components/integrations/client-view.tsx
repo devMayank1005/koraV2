@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Clock, Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
@@ -10,6 +10,9 @@ import { ExportMenu } from "@/components/export-menu";
 import { toast } from "sonner";
 import { InlineSelect } from "@/components/ui/inline";
 import { ArchiveButton } from "@/components/ui/archive-button";
+import { SplitPane } from "@/components/ui/resizable";
+import { IntegrationPanel } from "@/components/integrations/integration-panel";
+import { useUi, useUiHydrated } from "@/lib/store/ui";
 import { AddIntegrationDialog } from "@/components/create/integration-dialog";
 import { ClientEmailDialog } from "@/components/integrations/client-email-dialog";
 import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
@@ -23,6 +26,7 @@ import {
   integRiskReason,
   integMilestoneCounts,
   lastUpdateDate,
+  pickLanding,
 } from "@/lib/domain/integrations";
 import { STATUS_COLORS } from "@/lib/domain/constants";
 import type { Integration } from "@/lib/domain/types";
@@ -43,6 +47,40 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   const [adding, setAdding] = useState(false);
   const [emailing, setEmailing] = useState(false);
 
+  /**
+   * WHICH ROW IS OPEN, tagged with the client it belongs to.
+   *
+   * Tagged, because this component is not remounted when you move between
+   * clients — the route param changes and React reuses the instance — so a
+   * bare id would leave the previous client's row "selected" against a list it
+   * is not in. Comparing the tag means arriving at a client is indistinguishable
+   * from arriving fresh, which is what makes the derivation below need no
+   * effect: no `setState` in a `useEffect`, no cascading render, no flash of a
+   * panel belonging to the client you just left.
+   *
+   * `integId: null` is "closed on purpose" and is NOT the same as no entry —
+   * without that distinction, closing the panel would immediately reopen it on
+   * the fallback.
+   */
+  const [sel, setSel] = useState<{
+    clientId: string;
+    integId: string | null;
+  } | null>(null);
+
+  const rememberClient = useUi((s) => s.rememberIntegrationsClient);
+  const rememberInteg = useUi((s) => s.rememberIntegration);
+  const rememberedInteg = useUi((s) => s.lastIntegration[clientId]);
+  // Same reason as the landing: the stored slice arrives a tick after the first
+  // render, and auto-selecting before it does would open the first row and then
+  // visibly swap to the remembered one.
+  const storeReady = useUiHydrated();
+
+  // Recorded on arrival rather than on a rail click, so a typed URL, a
+  // bookmark and a link from the palette all count as "where I was".
+  useEffect(() => {
+    rememberClient(clientId);
+  }, [clientId, rememberClient]);
+
   const client = query.data;
 
   const all = useMemo(
@@ -62,6 +100,36 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
     () => (filter === "all" ? all : all.filter((i) => i.status === filter)),
     [all, filter],
   );
+
+  const shownIds = useMemo(() => shown.map((i) => i.id), [shown]);
+
+  /**
+   * Derived, never stored. Three cases, in order:
+   *   - closed on purpose for THIS client -> nothing;
+   *   - a row picked for this client and still visible -> that row;
+   *   - anything else (just arrived, or the filter hid the pick) -> where you
+   *     were in this client, falling back to the first row.
+   */
+  const own = sel?.clientId === clientId ? sel : null;
+  const selectedId =
+    own?.integId === null
+      ? null
+      : own && shownIds.includes(own.integId)
+        ? own.integId
+        : storeReady
+          ? (pickLanding(own ? undefined : rememberedInteg, shownIds) ?? null)
+          : null;
+
+  const selected = selectedId
+    ? (shown.find((i) => i.id === selectedId) ?? null)
+    : null;
+
+  function pick(integId: string) {
+    setSel({ clientId, integId });
+    // Only an explicit pick is remembered. Persisting the auto-selection would
+    // write a preference the user never expressed.
+    rememberInteg(clientId, integId);
+  }
 
   // Chips in STATUSES order, not alphabetical. That array is the app's
   // canonical status order — it already drives the very `InlineSelect` in the
@@ -244,39 +312,74 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
               </div>
             )}
 
-            <div className="mt-4">
-              {shown.length === 0 ? (
-                <EmptyState
-                  title={
-                    all.length === 0
-                      ? "No integrations yet"
-                      : `Nothing with status "${filter}"`
-                  }
-                  hint={
-                    all.length === 0
-                      ? "Integrations added for this client will appear here."
-                      : undefined
-                  }
-                />
-              ) : (
-                <IntegrationTable
-                  clientId={clientId}
-                  rows={shown}
-                  canEdit={canEdit}
-                  assignees={assignees}
-                />
-              )}
-            </div>
+            {(() => {
+              const body = (
+                <div>
+                  <div className="mt-4">
+                    {shown.length === 0 ? (
+                      <EmptyState
+                        title={
+                          all.length === 0
+                            ? "No integrations yet"
+                            : `Nothing with status "${filter}"`
+                        }
+                        hint={
+                          all.length === 0
+                            ? "Integrations added for this client will appear here."
+                            : undefined
+                        }
+                      />
+                    ) : (
+                      <IntegrationTable
+                        clientId={clientId}
+                        rows={shown}
+                        canEdit={canEdit}
+                        assignees={assignees}
+                        selectedId={selectedId}
+                        onSelect={pick}
+                        compact={Boolean(selected)}
+                      />
+                    )}
+                  </div>
 
-            {/* Both cards read the WHOLE set, never the filtered one. A status
-                mix that recomposed itself after you clicked "At Risk" could
-                only ever say "100% At Risk". */}
-            {all.length > 0 && (
-              <div className="mt-3.5 flex flex-wrap gap-3.5">
-                <StatusMix rows={all} />
-                <Staleness count={staleCount} />
-              </div>
-            )}
+                  {/* Both cards read the WHOLE set, never the filtered one. A
+                      status mix that recomposed itself after you clicked "At
+                      Risk" could only ever say "100% At Risk". */}
+                  {all.length > 0 && (
+                    <div className="mt-3.5 flex flex-wrap gap-3.5">
+                      <StatusMix rows={all} />
+                      <Staleness count={staleCount} />
+                    </div>
+                  )}
+                </div>
+              );
+
+              if (!selected) return body;
+
+              /* SplitPane, not a bespoke frame. It already queries its OWN
+                 wrapper rather than the viewport, so dragging the client rail
+                 re-decides the split with the window never moving, and it
+                 stacks the panel under the table instead of crushing it when
+                 there is no room. The matrix's phase panel predates it and
+                 gates on 1080px, which is wider than the content column of a
+                 1400px laptop — the panel would simply never appear here. */
+              return (
+                <SplitPane
+                  pane="integPanel"
+                  label="Resize integration detail"
+                  main={body}
+                  rail={
+                    <IntegrationPanel
+                      clientId={clientId}
+                      integration={selected}
+                      onClose={() =>
+                        setSel({ clientId, integId: null })
+                      }
+                    />
+                  }
+                />
+              );
+            })()}
           </>
         )}
       </QueryState>
@@ -387,17 +490,26 @@ function IntegrationTable({
   rows,
   canEdit,
   assignees,
+  selectedId,
+  onSelect,
+  compact,
 }: {
   clientId: string;
   rows: Integration[];
   canEdit: boolean;
   assignees: string[];
+  selectedId: string | null;
+  onSelect: (integId: string) => void;
+  /** True while the detail panel is open — see the colgroup below. */
+  compact: boolean;
 }) {
   return (
     // Its own scroll container: the page body must never scroll sideways, and
     // this table has six columns that cannot all fit on a phone.
     <div className="k-card overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
+      <table
+        className={`w-full border-collapse text-[12.5px] ${compact ? "min-w-[440px]" : "min-w-[720px]"}`}
+      >
         {/* 1c's column rhythm: 1fr / 130 / 118 / 96 / 92, with Milestones and
             the archive column added — the artboard draws five columns, but
             dropping either of ours would take real data off the screen.
@@ -411,13 +523,20 @@ function IntegrationTable({
             "On Hold —" and "Kavya (r". Percentages let all six grow together,
             so the gap after a title stays in proportion at any width and the
             controls stop being clipped. */}
+        {/* MILESTONES AND UPDATED STAND DOWN WHILE THE PANEL IS OPEN. Six
+            columns at a 720px floor inside a pane that is the table's share of
+            a split would scroll sideways, and a table you have to scroll to
+            read defeats the point of keeping the list beside the record. Both
+            are in the panel — where the row they describe is already open — so
+            nothing leaves the screen, and the remaining four take their share
+            of the width back. */}
         <colgroup>
-          <col style={{ width: "34%" }} />
-          <col style={{ width: "15%" }} />
-          <col style={{ width: "14%" }} />
-          <col style={{ width: "12%" }} />
-          <col style={{ width: "12%" }} />
-          <col style={{ width: "13%" }} />
+          <col style={{ width: compact ? "46%" : "34%" }} />
+          <col style={{ width: compact ? "22%" : "15%" }} />
+          <col style={{ width: compact ? "20%" : "14%" }} />
+          <col style={{ width: compact ? "12%" : "12%" }} />
+          {!compact && <col style={{ width: "12%" }} />}
+          {!compact && <col style={{ width: "13%" }} />}
           {canEdit && <col style={{ width: 44 }} />}
         </colgroup>
         <thead>
@@ -428,10 +547,14 @@ function IntegrationTable({
             <th className="px-4 py-[9px] text-left font-semibold">Status</th>
             <th className="px-4 py-[9px] text-left font-semibold">Assignee</th>
             <th className="px-4 py-[9px] text-left font-semibold">Due</th>
-            <th className="px-4 py-[9px] text-left font-semibold">
-              Milestones
-            </th>
-            <th className="px-4 py-[9px] text-left font-semibold">Updated</th>
+            {!compact && (
+              <th className="px-4 py-[9px] text-left font-semibold">
+                Milestones
+              </th>
+            )}
+            {!compact && (
+              <th className="px-4 py-[9px] text-left font-semibold">Updated</th>
+            )}
             {canEdit && <th className="px-4 py-[9px]" />}
           </tr>
         </thead>
@@ -443,11 +566,40 @@ function IntegrationTable({
             const ms = integMilestoneCounts(i);
             const last = lastUpdateDate(i);
 
+            const isSelected = i.id === selectedId;
+
             return (
-              <tr key={i.id} className="k-row k-row-hover">
-                <td className="px-4 py-[11px]">
+              /**
+               * THE ROW SELECTS; THE NAME STILL NAVIGATES.
+               *
+               * Clicking anywhere in the row opens the panel beside the table,
+               * which is what you want while comparing rows. The name stays an
+               * anchor to the full record, so the existing route, middle-click,
+               * open-in-new-tab and copy-link-address all keep working — a
+               * div-with-an-onClick would have quietly taken all four away.
+               * `stopPropagation` on the cell keeps the two from firing at once.
+               */
+              <tr
+                key={i.id}
+                onClick={() => onSelect(i.id)}
+                aria-selected={isSelected}
+                className={`k-row cursor-pointer ${
+                  isSelected
+                    ? "bg-k-primary/[.06]"
+                    : "k-row-hover"
+                }`}
+              >
+                <td
+                  className="px-4 py-[11px]"
+                  style={
+                    isSelected
+                      ? { boxShadow: "inset 3px 0 0 0 var(--k-primary)" }
+                      : undefined
+                  }
+                >
                   <Link
                     href={`/integrations/${clientId}/${encodeURIComponent(i.id)}`}
+                    onClick={(e) => e.stopPropagation()}
                     className="font-semibold text-k-ink hover:text-k-primary hover:underline"
                   >
                     {i.name}
@@ -528,6 +680,7 @@ function IntegrationTable({
                     <span className="text-k-mute">—</span>
                   )}
                 </td>
+                {!compact && (
                 <td className="px-4 py-[11px]">
                   {ms.total === 0 ? (
                     <span className="text-k-mute">—</span>
@@ -542,6 +695,8 @@ function IntegrationTable({
                     </span>
                   )}
                 </td>
+                )}
+                {!compact && (
                 <td className="px-4 py-[11px]">
                   {last ? (
                     <span
@@ -564,8 +719,9 @@ function IntegrationTable({
                     <span className="text-k-mute">Never</span>
                   )}
                 </td>
+                )}
                 {canEdit && (
-                  <td className="px-4 py-[11px]">
+                  <td className="px-4 py-[11px]" onClick={(e) => e.stopPropagation()}>
                     <ArchiveButton
                       path={`/api/integrations/${encodeURIComponent(i.id)}`}
                       version={i._v}
