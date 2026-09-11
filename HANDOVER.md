@@ -113,10 +113,11 @@ which ones are optional. The ones that matter:
 |---|---|
 | `DATABASE_URL` | Supabase **transaction** pooler, port 6543 |
 | `MIGRATION_DATABASE_URL` | **session** pooler, port 5432 — migrations only |
-| `KORA_SESSION_SECRET` | signs session cookies |
-| `KORA_READ_ONLY` / `NEXT_PUBLIC_KORA_READ_ONLY` | set to `1` while v1 is live |
-| `CRON_SECRET` | guards the two cron routes |
-| Microsoft Graph / Entra vars | SSO and the digest mailer; optional |
+| `INTEGTRACK_SECRET` | signs session tokens and SSO state — **must be a fresh value**, not v1's, or tokens issued by the old app would validate here |
+| `KORA_READ_ONLY` / `NEXT_PUBLIC_KORA_READ_ONLY` | set both to `1` while v1 is live |
+| `CRON_SECRET` | mandatory — unset, both cron routes answer 503 rather than running unauthenticated |
+| `KORA_APP_URL` | the app's own URL, no trailing slash; the SSO redirect is built from it |
+| `AZURE_*` | one Entra app registration serves both SSO and the digest mailer |
 
 `db/migrations/APPLIED.md` records which migrations have been applied and the
 two gates around them. `/styleguide` renders every design atom in both themes.
