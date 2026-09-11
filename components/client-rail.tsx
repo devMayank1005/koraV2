@@ -7,6 +7,9 @@ import { useClientList } from "@/lib/query/hooks";
 import { inIntegrationsTracker } from "@/lib/domain/integrations";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { RagDot } from "@/components/ui/status";
+import { ProgressRing } from "@/components/ui/progress-ring";
+import { InlineSelect } from "@/components/ui/inline";
+import { useCanEdit, useAssigneeOptions } from "@/lib/query/permissions";
 import { STATUS_COLORS } from "@/lib/domain/constants";
 import { integRagFromHealth, integSegments } from "@/lib/domain/integrations";
 import type { ClientSummary } from "@/lib/db/queries/clients";
@@ -42,11 +45,20 @@ export type Domain = "implementation" | "ams" | "integrations";
  * filter box has to still find it. Membership filtering does not lift: it is
  * about belonging, not emptiness.
  *
- * ONLY INTEGRATIONS GETS THE DOT AND THE BAR. 1c is the only artboard that
- * draws this rail, and `integHealth` is the only per-domain health the list
- * endpoint carries — Implementation and AMS would need their own aggregates and
- * their own designed treatment. They keep the same card geometry with their own
- * meta line, so the three rails stay one component instead of drifting again.
+ * EACH DOMAIN'S OWN AGGREGATE, IN ITS OWN TREATMENT — which is what this
+ * docblock used to anticipate and now describes. Integrations has the RAG dot
+ * and the three-segment bar from 1c. Implementation has a signed-off ring and
+ * an owner dropdown, because its aggregate is a fraction of phases rather than
+ * a health, and because assigning the client's owner is one of the four inline
+ * controls v1 had (`ui/inline.tsx`) and the only one that was never built. AMS
+ * has neither yet; it keeps the plain meta line.
+ *
+ * The card geometry stays identical across all three, so the rails remain one
+ * component rather than drifting apart again.
+ *
+ * THE ROW IS NO LONGER ONE LINK. A `<select>` inside an `<a>` is invalid, and
+ * in practice clicking it navigates — so the `<li>` carries the card (border,
+ * padding, left edge, hover) and the anchor shrinks to the ring and the name.
  */
 export function ClientRail({
   domain,
@@ -62,6 +74,21 @@ export function ClientRail({
 }) {
   const query = useClientList();
   const [term, setTerm] = useState("");
+
+  const canEdit = useCanEdit();
+  /**
+   * ONCE FOR THE WHOLE RAIL, not once per row.
+   *
+   * The array's identity is load-bearing — see the memo in `useAssigneeOptions`
+   * — and calling it per card with that card's own value would hand every row a
+   * different array and defeat it. No `current` is passed for the same reason;
+   * `InlineSelect` already offers an unrecognised value as itself, which is the
+   * case that argument exists for.
+   *
+   * It costs no request: `TrackerFrame` hydrates the user list beside the
+   * client list for every tracker screen.
+   */
+  const assignees = useAssigneeOptions();
 
   const clients = useMemo(() => {
     const all = query.data ?? [];
@@ -102,12 +129,14 @@ export function ClientRail({
         ? c.counts.workLog
         : c.counts.integrations;
 
-  const noun =
+  // Both forms, because "entry" does not pluralise by adding an s and the
+  // AMS rail has been reading "7 entrys" since it was written.
+  const noun: [string, string] =
     domain === "implementation"
-      ? "module"
+      ? ["module", "modules"]
       : domain === "ams"
-        ? "entry"
-        : "integration";
+        ? ["entry", "entries"]
+        : ["integration", "integrations"];
 
   return (
     <aside
@@ -116,9 +145,7 @@ export function ClientRail({
       aria-label="Clients"
     >
       <div className="border-b border-k-line-2 p-4">
-        <h2 className="mb-3 text-[14px] font-bold text-k-ink">
-          Clients
-        </h2>
+        <h2 className="mb-3 text-[14px] font-bold text-k-ink">Clients</h2>
         <div className="relative">
           <Search
             size={14}
@@ -164,16 +191,18 @@ export function ClientRail({
         >
           <ul>
             {clients.map((c) => (
-              <li key={c.id}>
-                <ClientCard
-                  client={c}
-                  href={hrefFor(c)}
-                  active={c.id === activeId}
-                  count={countFor(c)}
-                  noun={noun}
-                  showHealth={domain === "integrations"}
-                />
-              </li>
+              <ClientCard
+                key={c.id}
+                client={c}
+                href={hrefFor(c)}
+                active={c.id === activeId}
+                count={countFor(c)}
+                noun={noun}
+                showHealth={domain === "integrations"}
+                showProgress={domain === "implementation"}
+                canEdit={canEdit}
+                assignees={assignees}
+              />
             ))}
           </ul>
         </QueryState>
@@ -203,6 +232,11 @@ export function ClientRail({
  *
  * The 3px left edge is present on every card as `transparent` rather than
  * added on selection, so selecting a client cannot shift its text by 3px.
+ *
+ * It sits on the `<li>` rather than on the anchor because the Implementation
+ * card carries a `<select>`, which cannot live inside a link. The anchor covers
+ * the ring and the name — everything that means "go to this client" — and the
+ * owner control sits beside it under the same hover.
  */
 function ClientCard({
   client: c,
@@ -211,44 +245,113 @@ function ClientCard({
   count,
   noun,
   showHealth,
+  showProgress,
+  canEdit,
+  assignees,
 }: {
   client: ClientSummary;
   href: string;
   active: boolean;
   count: number;
-  noun: string;
+  /** Singular and plural. */
+  noun: [string, string];
   showHealth: boolean;
+  /** Implementation: the signed-off ring and the owner dropdown. */
+  showProgress: boolean;
+  canEdit: boolean;
+  assignees: string[];
 }) {
   const rag = showHealth ? integRagFromHealth(c.integHealth) : null;
 
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={`block border-b border-l-[3px] border-b-k-line-2 px-4 py-3 transition-colors ${
+    <li
+      className={`border-b border-l-[3px] border-b-k-line-2 px-4 py-3 transition-colors ${
         active
           ? "border-l-k-primary bg-k-primary/[.05]"
           : "border-l-transparent hover:bg-k-surface"
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span
-          className={`min-w-0 truncate text-[13px] font-semibold ${
-            active ? "text-k-primary" : "text-k-ink"
-          }`}
-        >
-          {c.name}
-        </span>
-        {rag && <RagDot rag={rag} size={9} />}
-      </div>
+      <Link
+        href={href}
+        aria-current={active ? "page" : undefined}
+        className="block"
+      >
+        <div className="flex items-center gap-2.5">
+          {showProgress && (
+            <ProgressRing
+              value={c.counts.phasesSignedOff}
+              total={c.counts.phases}
+              label={`${c.counts.phasesSignedOff} of ${c.counts.phases} phases signed off`}
+            />
+          )}
 
-      <div className="mt-1.5 truncate text-[10.5px] text-k-mute-2">
-        {count} {count === 1 ? noun : `${noun}s`}
-        {c.masterAssignee && <> · {c.masterAssignee}</>}
-      </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={`min-w-0 truncate text-[13px] font-semibold ${
+                  active ? "text-k-primary" : "text-k-ink"
+                }`}
+              >
+                {c.name}
+              </span>
+              {rag && <RagDot rag={rag} size={9} />}
+            </div>
 
-      {showHealth && <StatusBar health={c.integHealth} />}
-    </Link>
+            <div className="mt-1.5 truncate text-[10.5px] text-k-mute-2">
+              {count} {count === 1 ? noun[0] : noun[1]}
+              {/* The ring shows a percentage; this is the fraction behind it,
+                  which is the number the client's own screen states. Without a
+                  denominator, "14%" of nothing looks like a failing client. */}
+              {showProgress
+                ? c.counts.phases > 0 && (
+                    <>
+                      {" "}
+                      · {c.counts.phasesSignedOff}/{c.counts.phases} signed off
+                    </>
+                  )
+                : c.masterAssignee && <> · {c.masterAssignee}</>}
+            </div>
+          </div>
+        </div>
+
+        {showHealth && <StatusBar health={c.integHealth} />}
+      </Link>
+
+      {/* WHO OWNS THIS CLIENT, changeable from the list.
+          
+          Not cosmetic: `masterAssignee` routes the daily digest and counts
+          toward that person's PMO capacity on the dashboard. Viewers get the
+          same line as text — the meta above carries the owner for the other two
+          domains, and dropping it here would make Implementation the one rail
+          that does not say who owns the client. */}
+      {showProgress &&
+        (canEdit ? (
+          <div className="mt-2">
+            <InlineSelect
+              target={{
+                kind: "client",
+                clientId: c.id,
+                id: c.id,
+                path: `/api/clients/${encodeURIComponent(c.id)}`,
+                screen: "implementation",
+              }}
+              field="masterAssignee"
+              label={`Owner for ${c.name}`}
+              value={c.masterAssignee ?? ""}
+              options={assignees}
+              emptyLabel="Unassigned"
+              unknownSuffix="(not a current user)"
+              nullable
+              version={c._v}
+              before={c}
+            />
+          </div>
+        ) : (
+          <p className="mt-1.5 truncate text-[10.5px] text-k-mute-2">
+            {c.masterAssignee || "Unassigned"}
+          </p>
+        ))}
+    </li>
   );
 }
 

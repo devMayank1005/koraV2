@@ -16,8 +16,13 @@ import {
   portfolioSnapshots,
   auditLog,
 } from "@/lib/db/schema";
-import { listClients, getClientTrees, getClientTree } from "@/lib/db/queries/clients";
+import {
+  listClients,
+  getClientTrees,
+  getClientTree,
+} from "@/lib/db/queries/clients";
 import { listUsers, listUsersForAdmin } from "@/lib/db/queries/users";
+import { implSignoffCounts } from "@/lib/domain/implementation";
 import {
   getCapacityWeights,
   getDigestRecipients,
@@ -65,57 +70,193 @@ beforeAll(async () => {
   }
 
   await db.insert(users).values([
-    { id: "u1", username: "meera", name: "Meera", email: "m@example.com",
-      role: "admin", passwordHash: "$2b$12$hashvaluehere", tokenVersion: 0,
-      failedAttempts: 3, lockoutLevel: 1,
-      lockedUntil: "2026-09-02T00:00:00.000Z" },
-    { id: "u2", username: "vikram", name: "Vikram", email: "v@example.com",
-      role: "viewer", passwordHash: "$2b$12$hashvaluehere", tokenVersion: 0 },
+    {
+      id: "u1",
+      username: "meera",
+      name: "Meera",
+      email: "m@example.com",
+      role: "admin",
+      passwordHash: "$2b$12$hashvaluehere",
+      tokenVersion: 0,
+      failedAttempts: 3,
+      lockoutLevel: 1,
+      lockedUntil: "2026-09-02T00:00:00.000Z",
+    },
+    {
+      id: "u2",
+      username: "vikram",
+      name: "Vikram",
+      email: "v@example.com",
+      role: "viewer",
+      passwordHash: "$2b$12$hashvaluehere",
+      tokenVersion: 0,
+    },
   ]);
 
   await db.insert(clients).values([
-    { id: "c_full", name: "Aster Retail", description: "SAP",
-      currency: "INR", manDayRate: "8000", totalAvailableHours: "120",
-      masterAssignee: "Arjun", hasImplementation: true, hasAms: true,
-      updatedAt: "2026-08-01T09:30:00.000Z" },
+    {
+      id: "c_full",
+      name: "Aster Retail",
+      description: "SAP",
+      currency: "INR",
+      manDayRate: "8000",
+      totalAvailableHours: "120",
+      masterAssignee: "Arjun",
+      hasImplementation: true,
+      hasAms: true,
+      updatedAt: "2026-08-01T09:30:00.000Z",
+    },
     // In the Implementation domain with ZERO modules — the sentinel case.
-    { id: "c_empty", name: "Swastik", hasImplementation: true, hasAms: false,
-      updatedAt: "2026-08-02T09:30:00.000Z" },
+    {
+      id: "c_empty",
+      name: "Swastik",
+      hasImplementation: true,
+      hasAms: false,
+      updatedAt: "2026-08-02T09:30:00.000Z",
+    },
     { id: "c_archived", name: "Gone", archived: true },
   ]);
 
   await db.insert(integrations).values([
-    { id: "i1", clientId: "c_full", name: "Payroll sync", status: "At Risk",
-      assignee: "Kavya", dueDate: "2026-09-02", effortWeight: "1",
+    {
+      id: "i1",
+      clientId: "c_full",
+      name: "Payroll sync",
+      status: "At Risk",
+      assignee: "Kavya",
+      dueDate: "2026-09-02",
+      effortWeight: "1",
       activityLog: [
-        { id: "t1", date: "2026-08-20", update: "signed off", addedBy: "Meera",
-          attachment: { storagePath: "1_a_signoff.pdf", fileName: "signoff.pdf" } },
-      ] as never },
+        {
+          id: "t1",
+          date: "2026-08-20",
+          update: "signed off",
+          addedBy: "Meera",
+          attachment: {
+            storagePath: "1_a_signoff.pdf",
+            fileName: "signoff.pdf",
+          },
+        },
+      ] as never,
+    },
     { id: "i_arch", clientId: "c_full", name: "Old", archived: true },
   ]);
   await db.insert(milestones).values({
-    id: "ms1", integrationId: "i1", clientId: "c_full",
-    name: "UAT sign-off", status: "Pending", dueDate: "2026-09-04",
+    id: "ms1",
+    integrationId: "i1",
+    clientId: "c_full",
+    name: "UAT sign-off",
+    status: "Pending",
+    dueDate: "2026-09-04",
   });
-  await db.insert(modules).values({ id: "m1", clientId: "c_full", name: "Core HR" });
+  await db
+    .insert(modules)
+    .values({ id: "m1", clientId: "c_full", name: "Core HR" });
   await db.insert(phases).values({
-    id: "p1", moduleId: "m1", clientId: "c_full", phaseName: "BPU",
-    status: "Completed", targetDate: "2026-03-01",
+    id: "p1",
+    moduleId: "m1",
+    clientId: "c_full",
+    phaseName: "BPU",
+    status: "Completed",
+    targetDate: "2026-03-01",
   });
+  // The sign-off gate, both sides of it. A Signoff phase marked Completed is
+  // NOT signed off without a document attached to one of its updates — v1 had
+  // no such rule, so migrated rows really are in this state.
+  await db.insert(phases).values([
+    {
+      id: "p_gate_open",
+      moduleId: "m1",
+      clientId: "c_full",
+      phaseName: "BPU Signoff",
+      status: "Completed",
+      activityLog: [
+        { id: "u1", date: "2026-03-02", update: "done", addedBy: "sam" },
+      ],
+    },
+    {
+      id: "p_gate_met",
+      moduleId: "m1",
+      clientId: "c_full",
+      phaseName: "CRP Signoff",
+      status: "Completed",
+      activityLog: [
+        {
+          id: "u2",
+          date: "2026-03-03",
+          update: "signed",
+          addedBy: "sam",
+          attachment: {
+            fileName: "signoff.pdf",
+            storagePath: "c_full/crp.pdf",
+          },
+        },
+      ],
+    },
+    // An attachment object with no path is not evidence.
+    {
+      id: "p_gate_empty_path",
+      moduleId: "m1",
+      clientId: "c_full",
+      phaseName: "UAT Signoff",
+      status: "Completed",
+      activityLog: [
+        {
+          id: "u3",
+          date: "2026-03-04",
+          update: "oops",
+          addedBy: "sam",
+          attachment: { fileName: "nothing", storagePath: "" },
+        },
+      ],
+    },
+    // Not Completed at all, so the gate never comes into it.
+    {
+      id: "p_open",
+      moduleId: "m1",
+      clientId: "c_full",
+      phaseName: "UAT",
+      status: "In Progress",
+    },
+    // Archived, and Completed. It must appear in neither count — the SQL says
+    // `archived = false` and the tree never loads it, so the two agree only if
+    // both remember to exclude it.
+    {
+      id: "p_arch",
+      moduleId: "m1",
+      clientId: "c_full",
+      phaseName: "Go Live",
+      status: "Completed",
+      archived: true,
+    },
+  ]);
   await db.insert(amsWorkLog).values({
-    id: "w1", clientId: "c_full", dateRaised: "2026-08-04",
-    description: "Leave accrual", entryType: "Bug Fix",
-    queryLevel: "L4 - Critical", entryStatus: "Open", hours: "6.5",
+    id: "w1",
+    clientId: "c_full",
+    dateRaised: "2026-08-04",
+    description: "Leave accrual",
+    entryType: "Bug Fix",
+    queryLevel: "L4 - Critical",
+    entryStatus: "Open",
+    hours: "6.5",
   });
 
   await db.insert(appSettings).values([
     { key: "capacity_weights", value: { module: 2, cap: 4 } },
-    { key: "digest_recipients", value: { emails: ["ops@example.com", "pmo@example.com"] } },
+    {
+      key: "digest_recipients",
+      value: { emails: ["ops@example.com", "pmo@example.com"] },
+    },
   ]);
 
   await db.insert(portfolioSnapshots).values({
-    snapshotDate: "2026-08-30", clientId: "c_full", clientName: "Aster Retail",
-    integTotal: 5, integAtRisk: 1, amsHoursMonth: "103.5", overallRag: "Amber",
+    snapshotDate: "2026-08-30",
+    clientId: "c_full",
+    clientName: "Aster Retail",
+    integTotal: 5,
+    integAtRisk: 1,
+    amsHoursMonth: "103.5",
+    overallRag: "Amber",
   });
 
   await db.insert(auditLog).values([
@@ -136,7 +277,11 @@ describe("client list", () => {
     const full = rows.find((r) => r.id === "c_full")!;
     // i_arch is archived, so the count is 1 rather than 2.
     expect(full.counts).toEqual({
-      integrations: 1, modules: 1, phases: 1, workLog: 1,
+      integrations: 1,
+      modules: 1,
+      phases: 5,
+      phasesSignedOff: 2,
+      workLog: 1,
     });
   });
 
@@ -167,6 +312,45 @@ describe("client list", () => {
     expect(full.counts.integrations).toBe(full.integHealth.total);
   });
 
+  it("counts signed-off phases exactly as the client screen does", async () => {
+    /**
+     * THE NUMBER THE RAIL'S RING SHOWS, computed in SQL, against the same
+     * number the client's own screen computes in JS off the tree. They sit one
+     * click apart, so a disagreement is visible and unexplainable.
+     *
+     * The gate is the whole difficulty: three of these five phases are
+     * Completed sign-off phases, and only the one with a real `storagePath`
+     * counts. Plain `status = 'Completed'` would say 4.
+     */
+    const rows = await listClients(db);
+    const trees = await getClientTrees(db);
+
+    const diffs = rows.map((r) => {
+      const tree = trees.find((t) => t.id === r.id)!;
+      const js = implSignoffCounts(tree);
+      return {
+        client: r.id,
+        sql: r.counts.phasesSignedOff,
+        js: js.signedOff,
+        total: { sql: r.counts.phases, js: js.total },
+      };
+    });
+
+    expect(diffs).toEqual(
+      diffs.map((d) => ({
+        ...d,
+        sql: d.js,
+        total: { sql: d.total.js, js: d.total.js },
+      })),
+    );
+
+    // And not vacuously: the fixture really does exercise both sides of the
+    // gate, so an implementation that ignored it would show up here.
+    const full = diffs.find((d) => d.client === "c_full")!;
+    expect(full.sql).toBe(2);
+    expect(full.total.sql).toBe(5);
+  });
+
   it("gives the same health whatever the session timezone", async () => {
     // The reason `today` is bound from JS rather than read as `current_date`.
     // A session in IST rolls the date over five and a half hours early, which
@@ -184,10 +368,14 @@ describe("client list", () => {
     // a different route (an empty jsonb array, not a null date), so it is
     // asserted rather than assumed.
     await db.insert(integrations).values({
-      id: "i_never", clientId: "c_empty", name: "Never touched",
+      id: "i_never",
+      clientId: "c_empty",
+      name: "Never touched",
       status: "In Progress",
     });
-    const empty = (await listClients(db, FROZEN)).find((r) => r.id === "c_empty")!;
+    const empty = (await listClients(db, FROZEN)).find(
+      (r) => r.id === "c_empty",
+    )!;
     expect(empty.integHealth).toEqual({ total: 1, done: 0, risk: 0, stale: 1 });
   });
 
@@ -225,7 +413,9 @@ describe("client tree", () => {
     expect(tree).toBeTruthy();
     expect(tree!.integrations).toHaveLength(1);
     expect(tree!.integrations![0].name).toBe("Payroll sync");
-    expect(tree!.modules![0].phases![0].name).toBe("BPU");
+    // By name, not by index: `phaseName` arriving as `name` is what this pins,
+    // and the module now holds five phases in whatever order the query returns.
+    expect(tree!.modules![0].phases!.map((p) => p.name)).toContain("BPU");
     expect(tree!.workLog![0].hours).toBe(6.5);
   });
 
@@ -310,8 +500,16 @@ describe("users — role shaping", () => {
   });
 
   it("gives a viewer only what an assignee dropdown needs", async () => {
-    const rows = (await listUsers(db, "viewer")) as unknown as Record<string, unknown>[];
-    expect(Object.keys(rows[0]).sort()).toEqual(["id", "name", "role", "username"]);
+    const rows = (await listUsers(db, "viewer")) as unknown as Record<
+      string,
+      unknown
+    >[];
+    expect(Object.keys(rows[0]).sort()).toEqual([
+      "id",
+      "name",
+      "role",
+      "username",
+    ]);
     // No email, no lockout state.
     expect(rows[0].email).toBeUndefined();
     expect(rows[0].lockedUntil).toBeUndefined();
@@ -361,8 +559,12 @@ describe("snapshots — financial data", () => {
   });
 
   it("filters by date and client", async () => {
-    expect(await listSnapshots(db, { isAdmin: true, from: "2026-09-01" })).toHaveLength(0);
-    expect(await listSnapshots(db, { isAdmin: true, clientId: "nope" })).toHaveLength(0);
+    expect(
+      await listSnapshots(db, { isAdmin: true, from: "2026-09-01" }),
+    ).toHaveLength(0);
+    expect(
+      await listSnapshots(db, { isAdmin: true, clientId: "nope" }),
+    ).toHaveLength(0);
   });
 });
 

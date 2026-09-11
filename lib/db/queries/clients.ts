@@ -44,6 +44,8 @@ export interface ClientSummary {
     integrations: number;
     modules: number;
     phases: number;
+    /** Signed off, not merely Completed — see the subquery in `listClients`. */
+    phasesSignedOff: number;
     workLog: number;
   };
   /**
@@ -98,6 +100,40 @@ export async function listClients(
       phaseCount: sql<number>`(
         select count(*)::int from ${phases} p
         where p.client_id = ${qualify(clients.id)} and p.archived = false)`,
+      /**
+       * Phases actually SIGNED OFF — the numerator behind the rail's progress
+       * ring, and deliberately not `status = 'Completed'`.
+       *
+       * A sign-off phase needs a document attached to one of its updates before
+       * it counts, which is what `canCompletePhase` enforces on every write and
+       * what `phaseSignedOff` reports on the client's own screen. Counting
+       * plain Completed here would give the rail a higher number than the
+       * "N of M phases signed off" card on the screen it links to, and a rail
+       * that disagrees with the page it opens is worse than no rail.
+       *
+       * Migrated v1 rows can be Completed with no document — v1 had no such
+       * rule — so this is a real difference in the data, not a theoretical one.
+       * `tests/api/read-paths.test.ts` diffs this count against the JS for
+       * every client in the fixture, which is the same guard `integHealth` got
+       * when it moved into SQL.
+       *
+       * `->> 'storagePath'` mirrors `u.attachment?.storagePath` exactly: an
+       * attachment object with no path is not evidence, and `->>` yields the
+       * empty string rather than NULL for `{"storagePath": ""}`, hence nullif.
+       */
+      phasesSignedOff: sql<number>`(
+        select count(*)::int from ${phases} p
+        where p.client_id = ${qualify(clients.id)}
+          and p.archived = false
+          and p.status = 'Completed'
+          and (
+            p.phase_name not in ('BPU Signoff', 'CRP Signoff', 'UAT Signoff')
+            or exists (
+              select 1
+              from jsonb_array_elements(coalesce(p.activity_log, '[]'::jsonb)) e
+              where nullif(e -> 'attachment' ->> 'storagePath', '') is not null
+            )
+          ))`,
       workLogCount: sql<number>`(
         select count(*)::int from ${amsWorkLog} w
         where w.client_id = ${qualify(clients.id)} and w.archived = false)`,
@@ -167,6 +203,7 @@ export async function listClients(
       integrations: r.integHealth.total,
       modules: r.moduleCount,
       phases: r.phaseCount,
+      phasesSignedOff: r.phasesSignedOff,
       workLog: r.workLogCount,
     },
     integHealth: r.integHealth,
