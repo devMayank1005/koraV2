@@ -5,24 +5,44 @@ Next.js + TypeScript, themed on the Kognoz brand, with the database migrated
 from jsonb blobs to a normalized schema **in place** (same Supabase project, so
 the data never moves providers).
 
-The existing app in `../kora` stays deployed and untouched throughout; it is the
-rollback path until cutover completes.
+The existing app in `../kora` stays deployed until cutover; it is the rollback
+path. **Only one of the two may be writable at a time** — see *One writer* below
+and `HANDOVER.md`.
 
 ## Status
 
-Stages 0–1 complete. The app is not yet wired to a live database.
+Built and deployed. Every screen the old app had is here except Sales Pipeline.
 
 | Area | State |
 |---|---|
-| Scaffold, theme, fonts | done |
 | Kognoz design tokens + `k-*` component layer | done — review at `/styleguide` |
-| Ported business logic + golden-master tests | done |
-| Drizzle schema + numbered SQL migrations | done |
-| Migration tooling (`preflight`/`backfill`/`verify`) | done, proven end-to-end |
-| API, auth, screens | not started |
+| Drizzle schema + numbered SQL migrations | done, applied |
+| Migration tooling (`preflight`/`backfill`/`verify`) | done, proven end to end |
+| Auth: password, lockout, Microsoft SSO, roles | done |
+| API: 37 route handlers, OCC on every write, audit rows | done |
+| Dashboard (admin + personal) | done |
+| Integrations tracker | done |
+| Implementation tracker (module × nine-phase matrix) | done |
+| AMS & Support tracker | done — logic ported from `../kora/js/ams.js` |
+| Admin: users, clients, settings, audit, restore | done |
+| Exports: PDF and Excel, client email | done |
+| Daily digest + nightly backup crons | done |
+| **Sales Pipeline** | **not built** — see `HANDOVER.md` |
 
-63 tests passing: golden-master parity, mapping rules, migration SQL against
-real Postgres, and the full pipeline end-to-end.
+**660 tests** across 41 files: golden-master parity against the original
+vanilla-JS functions, mapping rules, migration SQL against real Postgres, the
+API read and write paths against PGlite, and the component behaviour that is
+invisible in a screenshot.
+
+## One writer
+
+The old app's `api/_dualwrite.js` shadow-writes every save into the `*_v2`
+tables and archives any row that is not in the v1 jsonb. So while v1 is live,
+anything this app creates is archived the next time v1 saves that client.
+
+`KORA_READ_ONLY=1` (plus `NEXT_PUBLIC_KORA_READ_ONLY=1` for the UI half) makes
+every write route answer 423 and hides every write control, so the two can run
+side by side safely. Lift it only in the same change that freezes v1.
 
 ## Getting started
 
@@ -36,11 +56,14 @@ approval gate — screens are built from these atoms, so a wrong value there is 
 wrong value everywhere.
 
 ```bash
-pnpm test         # golden-master, mapping, schema and pipeline suites
+pnpm test         # 660 tests
 pnpm typecheck
 pnpm lint
 pnpm build
 ```
+
+The database tests run against PGlite and need no server. The golden-master
+suite needs `../kora` checked out; it skips rather than fails without it.
 
 ## Migration
 
@@ -67,10 +90,14 @@ See `db/migrations/APPLIED.md` for migration order and the two gates.
 ## Layout
 
 ```
-app/            routes (App Router). /styleguide is the design reference.
-components/     shared UI
+app/            routes (App Router) + app/api route handlers
+app/styleguide  the design reference, every atom in both themes
+components/     screens and shared UI
 lib/domain/     business logic — RAG calculations, retainer maths, constants
-lib/utils/      dates, class merging
+lib/db/         Drizzle schema, queries and mutations
+lib/query/      TanStack Query hooks, cache keys, optimistic writes
+lib/export/     PDF and Excel generation
+lib/digest/     the daily assignee digest
 tests/golden/   differential tests against the original implementation
 ```
 
