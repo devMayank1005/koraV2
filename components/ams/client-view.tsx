@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
+import { useUi } from "@/lib/store/ui";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { DateField } from "@/components/ui/date-field";
 import { SplitPane } from "@/components/ui/resizable";
@@ -55,6 +56,14 @@ export function AmsClientView({ clientId }: { clientId: string }) {
   const [to, setTo] = useState("");
   const canEdit = useCanEdit();
   const session = useSession();
+  const rememberClient = useUi((s) => s.rememberClient);
+
+  // Recorded on arrival rather than on a rail click, so a typed URL, a
+  // bookmark and a link from the palette all count as "where I was". `/ams`
+  // with no client reopens this one.
+  useEffect(() => {
+    rememberClient("ams", clientId);
+  }, [clientId, rememberClient]);
   const [addingEntry, setAddingEntry] = useState(false);
 
   const totals = useMemo(

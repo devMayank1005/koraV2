@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { useClientList } from "@/lib/query/hooks";
-import { inIntegrationsTracker } from "@/lib/domain/integrations";
+import { inTracker, type TrackerDomain } from "@/lib/domain/tracker";
 import { QueryState, EmptyState } from "@/components/ui/states";
 import { RagDot } from "@/components/ui/status";
 import { ProgressRing } from "@/components/ui/progress-ring";
@@ -14,7 +14,13 @@ import { STATUS_COLORS } from "@/lib/domain/constants";
 import { integRagFromHealth, integSegments } from "@/lib/domain/integrations";
 import type { ClientSummary } from "@/lib/db/queries/clients";
 
-export type Domain = "implementation" | "ams" | "integrations";
+/**
+ * Re-exported under its old name. The type moved to `lib/domain/tracker.ts`
+ * once the UI store needed it too — a store importing a type from a component
+ * is backwards — and everything that already says `import type { Domain } from
+ * "@/components/client-rail"` keeps working.
+ */
+export type Domain = TrackerDomain;
 
 /**
  * The 268px client rail (artboard 1c), shared by all three trackers.
@@ -94,14 +100,13 @@ export function ClientRail({
     const all = query.data ?? [];
     const t = term.trim().toLowerCase();
 
-    const inDomain = all.filter((c) =>
-      domain === "implementation"
-        ? c.hasImplementation
-        : domain === "ams"
-          ? c.hasAms
-          : // Searching lifts the presence rule, so a client with no
-            // integrations is still reachable by name — see the docblock.
-            t !== "" || inIntegrationsTracker(c.counts.integrations),
+    const inDomain = all.filter(
+      (c) =>
+        // Searching lifts the presence rule, so a client with no integrations
+        // is still reachable by name — see the docblock. Membership filtering
+        // does not lift, and `inTracker` is where that difference is written
+        // down, shared with the landing redirect.
+        (domain === "integrations" && t !== "") || inTracker(domain, c),
     );
 
     return t
@@ -117,9 +122,8 @@ export function ClientRail({
    */
   const hidden = useMemo(() => {
     if (domain !== "integrations" || term.trim() !== "") return 0;
-    return (query.data ?? []).filter(
-      (c) => !inIntegrationsTracker(c.counts.integrations),
-    ).length;
+    return (query.data ?? []).filter((c) => !inTracker("integrations", c))
+      .length;
   }, [query.data, domain, term]);
 
   const countFor = (c: ClientSummary) =>

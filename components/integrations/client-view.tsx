@@ -63,7 +63,7 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
 
   const sort = useUi((s) => s.integSort);
   const setSort = useUi((s) => s.setIntegSort);
-  const rememberClient = useUi((s) => s.rememberIntegrationsClient);
+  const rememberClient = useUi((s) => s.rememberClient);
   const rememberInteg = useUi((s) => s.rememberIntegration);
   const rememberedInteg = useUi((s) => s.lastIntegration[clientId]);
   // Same reason as the landing: the stored slice arrives a tick after the first
@@ -74,7 +74,7 @@ export function IntegrationsClientView({ clientId }: { clientId: string }) {
   // Recorded on arrival rather than on a rail click, so a typed URL, a
   // bookmark and a link from the palette all count as "where I was".
   useEffect(() => {
-    rememberClient(clientId);
+    rememberClient("integrations", clientId);
   }, [clientId, rememberClient]);
 
   const client = query.data;

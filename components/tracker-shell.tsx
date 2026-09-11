@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { PanelLeftOpen } from "lucide-react";
 import { ClientRail, type Domain } from "@/components/client-rail";
+import { trackerHref } from "@/lib/domain/tracker";
 import { ResizeHandle, usePaneWidth } from "@/components/ui/resizable";
 
 /**
@@ -37,7 +38,7 @@ export function TrackerShell({
           <ClientRail
             domain={domain}
             activeId={params.clientId}
-            hrefFor={(c) => `/${domainSegment(domain)}/${c.id}`}
+            hrefFor={(c) => trackerHref(domain, c.id)}
             width={rail.width}
           />
           <ResizeHandle
@@ -69,12 +70,4 @@ export function TrackerShell({
       </div>
     </div>
   );
-}
-
-function domainSegment(d: Domain): string {
-  return d === "integrations"
-    ? "integrations"
-    : d === "implementation"
-      ? "implementation"
-      : "ams";
 }

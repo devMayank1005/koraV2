@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X, Plus } from "lucide-react";
 import { useClient } from "@/lib/query/hooks";
@@ -8,7 +8,10 @@ import { QueryState, EmptyState } from "@/components/ui/states";
 import { StatusPill, RagPill } from "@/components/ui/status";
 import { ExportMenu } from "@/components/export-menu";
 import { ResizeHandle, usePaneWidth } from "@/components/ui/resizable";
-import { Checklist, SignoffNotice } from "@/components/implementation/phase-parts";
+import {
+  Checklist,
+  SignoffNotice,
+} from "@/components/implementation/phase-parts";
 import { toast } from "sonner";
 import { InlineSelect } from "@/components/ui/inline";
 import { useCanEdit } from "@/lib/query/permissions";
@@ -22,7 +25,6 @@ import {
   shortPhase,
 } from "@/lib/domain/constants";
 import {
-  implProgress,
   implAutoRag,
   canCompletePhase,
   implSignoffCounts,
@@ -30,6 +32,7 @@ import {
   moduleOwner,
   phaseSignedOff,
 } from "@/lib/domain/implementation";
+import { useUi } from "@/lib/store/ui";
 import { fmtDate } from "@/lib/utils/dates";
 import type { Client, Module, Phase, Status } from "@/lib/domain/types";
 import { initials } from "@/lib/utils/people";
@@ -73,9 +76,26 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
   const [expanded, setExpanded] = useState(false);
   const panel = usePaneWidth("phasePanel");
   const canEditClient = useCanEdit();
+  const rememberClient = useUi((s) => s.rememberClient);
+
+  // Recorded on arrival rather than on a rail click, so a typed URL, a
+  // bookmark and a link from the palette all count as "where I was".
+  // `/implementation` with no client reopens this one.
+  useEffect(() => {
+    rememberClient("implementation", clientId);
+  }, [clientId, rememberClient]);
 
   const modules = client?.modules ?? [];
-  const progress = client ? implProgress(client) : null;
+  /**
+   * ONE FRACTION IN THIS FILE, not two.
+   *
+   * `implProgress` was called here for its `total` alone, and it counts
+   * Completed without the sign-off gate — so its `pct` and the percentage this
+   * screen actually shows disagreed by design. `implSignoffCounts` returns the
+   * identical total (both walk every phase of every module) and is the measure
+   * the gate enforces, the stat cards state and the rail's ring draws.
+   */
+  const signoff = client ? implSignoffCounts(client) : null;
   const rag = client ? implAutoRag(client) : null;
 
   const selectedModule = modules.find((m) => m.id === selected?.moduleId);
@@ -102,14 +122,13 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
                 <header className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h1 className="k-page-title truncate">{client.name}</h1>
-                    {/* 1e's meta line. The percentage that used to sit at 26px on
-                      the right is now the first stat card, where it is labelled
-                      — and it counts SIGNED-OFF phases there, which is the
-                      stricter measure and the one the gate enforces. */}
+                    {/* 1e's meta line. The phase COUNT has moved to the line
+                      below, which states it with a numerator; repeating "81
+                      phases" directly above "18/81 phases complete" said
+                      nothing the second time. */}
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-k-mute">
                       <span>
                         {modules.length} module{modules.length === 1 ? "" : "s"}
-                        {progress && <> · {progress.total} phases</>}
                         {client.masterAssignee && (
                           <>
                             {" "}
@@ -164,6 +183,25 @@ export function ImplementationMatrixView({ clientId }: { clientId: string }) {
                     )}
                   </div>
                 </header>
+
+                {/* HOW FAR ALONG THIS CLIENT IS, at the top of its own screen.
+
+                    It was the first stat card, below the grid and after the
+                    legend, which is a long way down for the one number anyone
+                    asks for first. It is the same count the rail's ring draws
+                    beside the client's name, so the two agree by construction
+                    rather than by coincidence — and it counts signed-off
+                    phases, the measure the gate enforces, not merely Completed
+                    ones.
+
+                    Suppressed for a client with no phases: "0/0 · 0%" under a
+                    "No modules yet" empty state is noise about nothing. */}
+                {signoff && signoff.total > 0 && (
+                  <ProgressLine
+                    signedOff={signoff.signedOff}
+                    total={signoff.total}
+                  />
+                )}
 
                 <AddModuleDialog
                   clientId={clientId}
@@ -238,9 +276,6 @@ function Matrix({
 }) {
   const counts = implSignoffCounts(client);
   const goLive = projectedGoLive(client);
-  const signedPct = counts.total
-    ? Math.round((counts.signedOff / counts.total) * 100)
-    : 0;
 
   return (
     <>
@@ -332,11 +367,11 @@ function Matrix({
         attached to an update before it can be completed
       </p>
 
-      <div className="mt-5 grid gap-3.5 sm:grid-cols-3">
-        <Stat
-          value={`${signedPct}%`}
-          label={`${counts.signedOff} of ${counts.total} phases signed off`}
-        />
+      {/* TWO CARDS, NOT THREE. The first one said "22% — 18 of 81 phases
+          signed off", which is now the progress line under the client's name
+          at the top of the screen. Stating the same number twice, 600px apart,
+          reads as two different measurements. */}
+      <div className="mt-5 grid gap-3.5 sm:grid-cols-2">
         <Stat
           value={counts.atRiskOrDelayed}
           label="phases at risk or delayed"
@@ -384,6 +419,45 @@ function Legend() {
   );
 }
 
+/**
+ * "18/81 phases complete · 22%", and the bar under it.
+ *
+ * LOCAL, like `StatusBar` in the rail and `WorkMix` in the AMS card. One
+ * consumer, and no second caller in sight — a file in `components/ui` would be
+ * a shared primitive that nothing shares.
+ *
+ * The bar is `aria-hidden`: the sentence above it is the same information in
+ * words, and a decorative track announced after it helps nobody.
+ */
+function ProgressLine({
+  signedOff,
+  total,
+}: {
+  signedOff: number;
+  total: number;
+}) {
+  const pct = total ? Math.round((signedOff / total) * 100) : 0;
+
+  return (
+    <div className="mt-3">
+      <p className="text-[12.5px] text-k-mute">
+        <span className="k-mono font-semibold text-k-ink">
+          {signedOff}/{total}
+        </span>{" "}
+        phases complete · <span className="font-semibold">{pct}%</span>
+      </p>
+      <div
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-k-line-2"
+        aria-hidden
+      >
+        <div
+          className="h-full rounded-full bg-k-ok transition-[width] duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function Stat({
   value,

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { IntegSort } from "@/lib/domain/integrations";
+import type { TrackerDomain } from "@/lib/domain/tracker";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 /**
@@ -111,17 +112,25 @@ interface UiState {
 
   /**
    * WHERE YOU WERE, so landing on a tracker lands on work rather than on a
-   * chooser. `/integrations` with no client picked redirects to this one, and
-   * opening a client reopens the record you last had open in it.
+   * chooser. All three trackers now redirect to this when opened with no client
+   * picked, and opening a client reopens the record you last had open in it.
+   *
+   * A MAP, keyed by tracker, rather than one field per tracker: the landing
+   * component is parameterised by domain and would otherwise need a switch to
+   * find its own field. `lastIntegration` below is already shaped this way.
+   *
+   * It replaces `lastIntegrationsClient`, and the old key is deliberately not
+   * migrated — the shallow merge leaves it sitting unread in localStorage and
+   * the cost is one visit, after which this remembers again.
    *
    * Ids, not objects: a remembered client or integration can be archived
    * between visits, so every read goes through `pickLanding`, which falls back
    * to the first row rather than rendering an empty screen.
    */
-  lastIntegrationsClient?: string;
+  lastClient: Partial<Record<TrackerDomain, string>>;
   /** clientId -> integId. Per client, because "where I was" is per client. */
   lastIntegration: Record<string, string>;
-  rememberIntegrationsClient: (clientId: string) => void;
+  rememberClient: (domain: TrackerDomain, clientId: string) => void;
   rememberIntegration: (clientId: string, integId: string) => void;
 
   /** How the integration list is ordered. A view preference, so it persists. */
@@ -176,9 +185,13 @@ export const useUi = create<UiState>()(
       paneWidths: defaultPaneWidths(),
       paneClosed: {},
       setPaneWidth: (id, px) =>
-        set((s) => ({ paneWidths: { ...s.paneWidths, [id]: clampPane(id, px) } })),
+        set((s) => ({
+          paneWidths: { ...s.paneWidths, [id]: clampPane(id, px) },
+        })),
       togglePaneClosed: (id) =>
-        set((s) => ({ paneClosed: { ...s.paneClosed, [id]: !s.paneClosed[id] } })),
+        set((s) => ({
+          paneClosed: { ...s.paneClosed, [id]: !s.paneClosed[id] },
+        })),
       setPaneClosed: (id, closed) =>
         set((s) => ({ paneClosed: { ...s.paneClosed, [id]: closed } })),
       resetPane: (id) =>
@@ -187,10 +200,10 @@ export const useUi = create<UiState>()(
           paneClosed: { ...s.paneClosed, [id]: false },
         })),
 
-      lastIntegrationsClient: undefined,
+      lastClient: {},
       lastIntegration: {},
-      rememberIntegrationsClient: (clientId) =>
-        set({ lastIntegrationsClient: clientId }),
+      rememberClient: (domain, clientId) =>
+        set((s) => ({ lastClient: { ...s.lastClient, [domain]: clientId } })),
       rememberIntegration: (clientId, integId) =>
         set((s) => ({
           lastIntegration: { ...s.lastIntegration, [clientId]: integId },
@@ -223,7 +236,7 @@ export const useUi = create<UiState>()(
         recent: s.recent,
         paneWidths: s.paneWidths,
         paneClosed: s.paneClosed,
-        lastIntegrationsClient: s.lastIntegrationsClient,
+        lastClient: s.lastClient,
         lastIntegration: s.lastIntegration,
         integSort: s.integSort,
       }),
@@ -310,34 +323,51 @@ interface LegacyRecent {
   view?: string;
   label?: string;
   sub?: string;
-  params?: { clientId?: string; integId?: string; moduleId?: string; phase?: string };
+  params?: {
+    clientId?: string;
+    integId?: string;
+    moduleId?: string;
+    phase?: string;
+  };
 }
 
 function legacyHref(r: LegacyRecent): string | null {
   const p = r.params ?? {};
   const e = encodeURIComponent;
   switch (r.view) {
-    case "dashboard": return "/dashboard";
-    case "clients": return "/integrations";
-    case "client-detail": return p.clientId ? `/integrations/${e(p.clientId)}` : null;
+    case "dashboard":
+      return "/dashboard";
+    case "clients":
+      return "/integrations";
+    case "client-detail":
+      return p.clientId ? `/integrations/${e(p.clientId)}` : null;
     case "integ-detail":
       return p.clientId && p.integId
-        ? `/integrations/${e(p.clientId)}/${e(p.integId)}` : null;
-    case "impl-clients": return "/implementation";
-    case "impl-client-detail": return p.clientId ? `/implementation/${e(p.clientId)}` : null;
+        ? `/integrations/${e(p.clientId)}/${e(p.integId)}`
+        : null;
+    case "impl-clients":
+      return "/implementation";
+    case "impl-client-detail":
+      return p.clientId ? `/implementation/${e(p.clientId)}` : null;
     case "impl-phase-detail":
       return p.clientId && p.moduleId && p.phase
-        ? `/implementation/${e(p.clientId)}/${e(p.moduleId)}/${e(p.phase)}` : null;
-    case "ams-clients": return "/ams";
-    case "ams-client-detail": return p.clientId ? `/ams/${e(p.clientId)}` : null;
-    case "admin": return "/admin";
-    default: return null;
+        ? `/implementation/${e(p.clientId)}/${e(p.moduleId)}/${e(p.phase)}`
+        : null;
+    case "ams-clients":
+      return "/ams";
+    case "ams-client-detail":
+      return p.clientId ? `/ams/${e(p.clientId)}` : null;
+    case "admin":
+      return "/admin";
+    default:
+      return null;
   }
 }
 
 function legacyKind(view: string | undefined): RecentItem["kind"] {
   if (view?.startsWith("integ")) return "integration";
-  if (view?.startsWith("impl")) return view === "impl-phase-detail" ? "phase" : "module";
+  if (view?.startsWith("impl"))
+    return view === "impl-phase-detail" ? "phase" : "module";
   if (view?.startsWith("ams")) return "ams";
   return "client";
 }
