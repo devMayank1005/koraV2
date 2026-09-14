@@ -22,7 +22,7 @@ import {
 } from "@/lib/query/admin";
 import type { UserAdminView } from "@/lib/db/queries/users";
 import { ApiError } from "@/lib/api/fetcher";
-import { fmtDateTime } from "@/lib/utils/dates";
+import { fmtDate, fmtDateTime } from "@/lib/utils/dates";
 
 const ROLE_COLOR: Record<string, string> = {
   admin: "var(--k-primary)",
@@ -59,7 +59,11 @@ function lastActiveLabel(ts: string | null): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return fmtDateTime(ts).split(" ")[0] ?? "—";
+  // `fmtDate`, not the first token of `fmtDateTime`. That produced
+  // "03 Jul 2026, 02:45 pm".split(" ")[0] — a bare "03" — so a user dormant
+  // for more than a month rendered as a number with no unit, sitting in a
+  // column where every other row said "5d ago".
+  return fmtDate(ts);
 }
 
 export function UsersTab() {
