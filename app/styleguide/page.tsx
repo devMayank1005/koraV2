@@ -45,9 +45,7 @@ function Section({
     <section className="mb-10">
       <div className="mb-4 border-b border-k-line pb-2">
         <h2 className="k-page-title text-[18px]">{title}</h2>
-        {note ? (
-          <p className="mt-1 text-k-meta text-k-mute">{note}</p>
-        ) : null}
+        {note ? <p className="mt-1 text-k-meta text-k-mute">{note}</p> : null}
       </div>
       {children}
     </section>
@@ -132,8 +130,16 @@ export default function StyleguidePage() {
           note="Primary is Kognoz Deep Blue. Verified against the logo: wordmark #005082, tagline #0099DA, mark tip #74A63F."
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-            <Swatch name="Primary" value="var(--k-primary)" themeKey={themeKey} />
-            <Swatch name="Primary hover" value="var(--k-primary-hover)" themeKey={themeKey} />
+            <Swatch
+              name="Primary"
+              value="var(--k-primary)"
+              themeKey={themeKey}
+            />
+            <Swatch
+              name="Primary hover"
+              value="var(--k-primary-hover)"
+              themeKey={themeKey}
+            />
             <Swatch name="Cyan" value="var(--k-cyan)" themeKey={themeKey} />
             <Swatch name="Sky" value="var(--k-sky)" themeKey={themeKey} />
             <Swatch name="Teal" value="var(--k-teal)" themeKey={themeKey} />
@@ -160,11 +166,15 @@ export default function StyleguidePage() {
         {/* ---------------------------------------------------------------- */}
         <Section
           title="Surfaces & ink"
-          note="Page ground is --k-surface; cards sit on --k-paper. In dark mode these become navy, not neutral grey."
+          note="Page ground is --k-surface; cards sit on --k-paper. Both are neutral in either theme — the hue on screen should be the data's, not the ground's."
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
             <Swatch name="paper" value="var(--k-paper)" themeKey={themeKey} />
-            <Swatch name="surface" value="var(--k-surface)" themeKey={themeKey} />
+            <Swatch
+              name="surface"
+              value="var(--k-surface)"
+              themeKey={themeKey}
+            />
             <Swatch name="line-2" value="var(--k-line-2)" themeKey={themeKey} />
             <Swatch name="line" value="var(--k-line)" themeKey={themeKey} />
             <Swatch name="field" value="var(--k-field)" themeKey={themeKey} />
@@ -212,7 +222,10 @@ export default function StyleguidePage() {
                 <span style={{ color: `var(${fill})` }}>
                   Fails contrast on white
                 </span>
-                <span style={{ color: `var(${safe})` }} className="font-semibold">
+                <span
+                  style={{ color: `var(${safe})` }}
+                  className="font-semibold"
+                >
                   Passes AA
                 </span>
               </div>
@@ -232,9 +245,7 @@ export default function StyleguidePage() {
             <div className="k-page-title text-k-h1">Portfolio — 26px h1</div>
             <div className="k-page-title text-k-h2">Page title — 22px h2</div>
             <div className="k-card-title">Card title — 14px 700</div>
-            <div className="text-k-nav text-k-ink">
-              Nav / tab label — 13px
-            </div>
+            <div className="text-k-nav text-k-ink">Nav / tab label — 13px</div>
             <div className="text-k-body text-k-ink">
               Table row and body copy — 12.5px. This is the workhorse size; the
               app is deliberately dense.
@@ -251,7 +262,10 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ---------------------------------------------------------------- */}
-        <Section title="Buttons" note="Heights 40 / 34 / 32 / 30. Radius 4px. Active scales to .98 for 80ms.">
+        <Section
+          title="Buttons"
+          note="Heights 40 / 34 / 32 / 30. Radius 4px. Active scales to .98 for 80ms."
+        >
           <div className="k-card flex flex-wrap items-center gap-3 p-6">
             <button className="k-btn k-btn-primary k-btn-lg">Sign In</button>
             <button className="k-btn k-btn-primary k-btn-md">
@@ -271,7 +285,10 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ---------------------------------------------------------------- */}
-        <Section title="Form controls" note="Focus is a 3px primary ring at 12% alpha plus a primary border.">
+        <Section
+          title="Form controls"
+          note="Focus is a 3px primary ring at 12% alpha plus a primary border."
+        >
           <div className="k-card grid gap-5 p-6 sm:grid-cols-2">
             <div>
               <label className="k-label">Username</label>
@@ -287,7 +304,10 @@ export default function StyleguidePage() {
             </div>
             <div>
               <label className="k-label">Filter (small)</label>
-              <input className="k-input k-input-sm" placeholder="Filter clients…" />
+              <input
+                className="k-input k-input-sm"
+                placeholder="Filter clients…"
+              />
             </div>
             <div>
               <label className="k-label">Read mode</label>
@@ -318,7 +338,11 @@ export default function StyleguidePage() {
                   <Check size={11} strokeWidth={2.5} />
                 </span>
                 <span className="text-[12.5px] text-k-ink">UAT sign-off</span>
-                <span className="k-check ml-4" data-checked="false" aria-hidden />
+                <span
+                  className="k-check ml-4"
+                  data-checked="false"
+                  aria-hidden
+                />
                 <span className="text-[12.5px] text-k-ink">Go-live plan</span>
               </div>
             </div>
@@ -327,7 +351,9 @@ export default function StyleguidePage() {
               <textarea
                 className="k-textarea"
                 rows={3}
-                defaultValue={"Payroll cutover rehearsed with the client.\nSign-off document attached."}
+                defaultValue={
+                  "Payroll cutover rehearsed with the client.\nSign-off document attached."
+                }
               />
             </div>
             <div className="sm:col-span-2">
@@ -420,20 +446,27 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ---------------------------------------------------------------- */}
-        <Section title="Filter chips" note="Click to see the active state. Hover borders go primary.">
+        <Section
+          title="Filter chips"
+          note="Click to see the active state. Hover borders go primary."
+        >
           <div className="k-card flex flex-wrap items-center gap-2 p-6">
-            {["All", "At Risk", "In Progress", "Pending Client", "Completed"].map(
-              (c) => (
-                <button
-                  key={c}
-                  className="k-chip"
-                  data-active={chip === c}
-                  onClick={() => setChip(c)}
-                >
-                  {c}
-                </button>
-              ),
-            )}
+            {[
+              "All",
+              "At Risk",
+              "In Progress",
+              "Pending Client",
+              "Completed",
+            ].map((c) => (
+              <button
+                key={c}
+                className="k-chip"
+                data-active={chip === c}
+                onClick={() => setChip(c)}
+              >
+                {c}
+              </button>
+            ))}
             <span className="ml-auto text-k-small text-k-mute-2">
               8 of 8 shown
             </span>
@@ -441,7 +474,10 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ---------------------------------------------------------------- */}
-        <Section title="Sidebar nav" note="White sidebar. Active state is a tint plus colour plus weight — no left bar, no dark fill.">
+        <Section
+          title="Sidebar nav"
+          note="The sidebar is --k-paper: white in light, near-black in dark. Active state is a tint plus colour plus weight — no left bar, no dark fill."
+        >
           <div className="w-[232px] rounded-k border border-k-line bg-k-paper p-3">
             <div className="k-nav-group !pt-1">Main</div>
             <div className="k-nav-item" data-active="true">
@@ -470,16 +506,39 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ---------------------------------------------------------------- */}
-        <Section title="KPI tiles" note="Each tile carries a 3px left accent rail in its own colour.">
+        <Section
+          title="KPI tiles"
+          note="Each tile carries a 3px left accent rail in its own colour."
+        >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {(
               [
                 ["9", "Clients", "var(--k-primary)", "var(--k-ink)"],
-                ["11", "Critical items", "var(--k-fill-risk)", "var(--k-text-red)"],
+                [
+                  "11",
+                  "Critical items",
+                  "var(--k-fill-risk)",
+                  "var(--k-text-red)",
+                ],
                 ["34", "Updates · 7 days", "var(--k-sky)", "var(--k-ink)"],
-                ["2 · 3 · 4", "Health split R · A · G", "var(--k-fill-warn)", "var(--k-ink)"],
-                ["2", "L3 / L4 open", "var(--k-fill-risk)", "var(--k-text-red)"],
-                ["78%", "Data hygiene", "var(--k-green)", "var(--k-text-green)"],
+                [
+                  "2 · 3 · 4",
+                  "Health split R · A · G",
+                  "var(--k-fill-warn)",
+                  "var(--k-ink)",
+                ],
+                [
+                  "2",
+                  "L3 / L4 open",
+                  "var(--k-fill-risk)",
+                  "var(--k-text-red)",
+                ],
+                [
+                  "78%",
+                  "Data hygiene",
+                  "var(--k-green)",
+                  "var(--k-text-green)",
+                ],
               ] as const
             ).map(([value, label, accent, color]) => (
               <div
@@ -499,7 +558,10 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ---------------------------------------------------------------- */}
-        <Section title="Table" note="Header sits on --k-surface; rows divide on --k-line-2 and hover at 4% primary.">
+        <Section
+          title="Table"
+          note="Header sits on --k-surface; rows divide on --k-line-2 and hover at 4% primary."
+        >
           <div className="k-card overflow-hidden">
             <div className="k-thead grid grid-cols-[1fr_130px_118px_96px]">
               <span>Integration ↑</span>
@@ -511,7 +573,12 @@ export default function StyleguidePage() {
               [
                 ["Payroll → SAP posting", "At Risk", "Kavya Iyer", "02 Sep"],
                 ["Benefits vendor API", "In Progress", "Arjun Mehta", "18 Sep"],
-                ["Learning catalogue import", "Completed", "Priya Nair", "12 Aug"],
+                [
+                  "Learning catalogue import",
+                  "Completed",
+                  "Priya Nair",
+                  "12 Aug",
+                ],
               ] as [string, Status, string, string][]
             ).map(([name, status, who, due]) => (
               <div
@@ -548,7 +615,10 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ---------------------------------------------------------------- */}
-        <Section title="Phase track" note="The nine fixed phases. Completed / current / future.">
+        <Section
+          title="Phase track"
+          note="The nine fixed phases. Completed / current / future."
+        >
           <div className="k-card p-5">
             <div className="flex gap-0">
               {PHASES.map((p, i) => (
@@ -615,7 +685,8 @@ export default function StyleguidePage() {
 
             <div className="k-banner-offline rounded-k">
               <span className="h-[7px] w-[7px] rounded-full bg-white" />
-              You are offline — saves will fail until your connection is restored.
+              You are offline — saves will fail until your connection is
+              restored.
             </div>
 
             <div className="k-banner-viewas">
@@ -653,12 +724,18 @@ export default function StyleguidePage() {
 
             <div className="k-card p-8 text-center">
               <div className="mx-auto mb-3.5 flex h-11 w-11 items-center justify-center rounded-k border-[1.5px] border-dashed border-k-field">
-                <Paperclip size={20} strokeWidth={1.5} className="text-k-mute-2" />
+                <Paperclip
+                  size={20}
+                  strokeWidth={1.5}
+                  className="text-k-mute-2"
+                />
               </div>
-              <div className="k-card-title text-[16px]">No integrations yet</div>
+              <div className="k-card-title text-[16px]">
+                No integrations yet
+              </div>
               <p className="mx-auto mt-1.5 max-w-[320px] text-k-body leading-[1.6] text-k-mute">
-                Add the first integration for this client, or import a batch from
-                a CSV.
+                Add the first integration for this client, or import a batch
+                from a CSV.
               </p>
               <div className="mt-4 inline-flex gap-2">
                 <button className="k-btn k-btn-primary">+ Integration</button>
@@ -669,7 +746,10 @@ export default function StyleguidePage() {
         </Section>
 
         {/* ---------------------------------------------------------------- */}
-        <Section title="Search trigger" note="The sidebar's command-palette entry point.">
+        <Section
+          title="Search trigger"
+          note="The sidebar's command-palette entry point."
+        >
           <div className="w-[208px]">
             <div className="flex h-8 items-center gap-2 rounded-k border border-k-line bg-k-surface px-2.5 text-k-meta text-k-mute">
               <Search size={13} strokeWidth={1.5} />
@@ -706,17 +786,29 @@ export default function StyleguidePage() {
             <div>
               <div className="k-eyebrow mb-2">On white — fine</div>
               <div className="k-card p-4">
-                <Image src="/kognoz-logo.png" alt="Kognoz" width={158} height={47} />
+                <Image
+                  src="/kognoz-logo.png"
+                  alt="Kognoz"
+                  width={158}
+                  height={47}
+                />
               </div>
             </div>
             <div>
-              <div className="k-eyebrow mb-2">On Deep Blue — in a white chip</div>
+              <div className="k-eyebrow mb-2">
+                On Deep Blue — in a white chip
+              </div>
               <div
                 className="rounded-k p-4"
                 style={{ background: "var(--k-ink-2)" }}
               >
                 <span className="inline-block rounded-k bg-white px-3.5 py-2">
-                  <Image src="/kognoz-logo.png" alt="Kognoz" width={132} height={39} />
+                  <Image
+                    src="/kognoz-logo.png"
+                    alt="Kognoz"
+                    width={132}
+                    height={39}
+                  />
                 </span>
               </div>
             </div>
@@ -726,14 +818,19 @@ export default function StyleguidePage() {
                 className="rounded-k p-4"
                 style={{ background: "var(--k-ink-2)" }}
               >
-                <Image src="/kognoz-logo.png" alt="Kognoz" width={132} height={39} />
+                <Image
+                  src="/kognoz-logo.png"
+                  alt="Kognoz"
+                  width={132}
+                  height={39}
+                />
               </div>
             </div>
           </div>
           <p className="mt-3 text-k-small leading-[1.6] text-k-mute">
             A transparent SVG would remove the constraint entirely and let the
-            mark sit directly on any surface. Worth requesting from whoever holds
-            the brand assets.
+            mark sit directly on any surface. Worth requesting from whoever
+            holds the brand assets.
           </p>
         </Section>
 

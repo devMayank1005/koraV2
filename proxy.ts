@@ -46,6 +46,22 @@ function hasPlausibleSession(req: NextRequest): boolean {
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  /**
+   * `/logout` answers to nobody here, and needs its own arm because BOTH of
+   * the ones below are wrong for it.
+   *
+   * Treated as protected, a signed-out visitor is sent to
+   * `/login?next=/logout` — and `next` is followed after signing in, so they
+   * would be signed straight back out again. Treated as public, the branch
+   * below redirects a SIGNED-IN visitor to /dashboard, and the handler that
+   * clears the cookie never runs at all.
+   *
+   * It is safe to let through in both states: the handler clears whatever is
+   * there and redirects to /login either way.
+   */
+  if (pathname === "/logout") return NextResponse.next();
+
   const signedIn = hasPlausibleSession(req);
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 

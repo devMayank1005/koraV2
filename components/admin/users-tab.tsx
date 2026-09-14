@@ -184,13 +184,21 @@ export function UsersTab() {
                     className="grid items-center gap-3 border-b border-k-line-2 px-[18px] py-[11px] text-[12.5px] last:border-b-0"
                     style={{ gridTemplateColumns: "1fr 130px 96px 110px 34px" }}
                   >
-                    <div role="cell" className="flex min-w-0 items-center gap-2.5">
+                    <div
+                      role="cell"
+                      className="flex min-w-0 items-center gap-2.5"
+                    >
                       <span
                         aria-hidden
                         className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full font-k-head text-[11px] font-bold"
                         style={
                           u.role === "admin"
-                            ? { background: "var(--k-primary)", color: "#fff" }
+                            ? {
+                                background: "var(--k-primary)",
+                                // Not #fff: on the dark theme's #7FC4E8 that
+                                // is 1.87:1. The token inverts with the brand.
+                                color: "var(--k-on-primary)",
+                              }
                             : {
                                 background: "var(--k-primary-08)",
                                 color: "var(--k-primary)",
@@ -199,7 +207,10 @@ export function UsersTab() {
                       >
                         {u.name.trim().charAt(0).toUpperCase() || "?"}
                       </span>
-                      <span className="truncate font-medium text-k-ink" title={u.name}>
+                      <span
+                        className="truncate font-medium text-k-ink"
+                        title={u.name}
+                      >
                         {u.name}
                       </span>
                       {locked && (
@@ -210,16 +221,25 @@ export function UsersTab() {
                             color: "var(--k-text-red)",
                           }}
                           title={`Locked until ${fmtDateTime(u.lockedUntil!)}${
-                            u.lockoutLevel >= 2 ? " · next lock is 24 hours" : ""
+                            u.lockoutLevel >= 2
+                              ? " · next lock is 24 hours"
+                              : ""
                           }`}
                         >
-                          <ShieldAlert size={11} strokeWidth={1.5} aria-hidden />
+                          <ShieldAlert
+                            size={11}
+                            strokeWidth={1.5}
+                            aria-hidden
+                          />
                           Locked
                         </span>
                       )}
                     </div>
 
-                    <span role="cell" className="k-mono truncate text-[11px] text-k-mute">
+                    <span
+                      role="cell"
+                      className="k-mono truncate text-[11px] text-k-mute"
+                    >
                       {u.username}
                     </span>
 
@@ -230,68 +250,74 @@ export function UsersTab() {
                     <span
                       role="cell"
                       className="text-[11.5px] text-k-mute-2"
-                      title={u.lastActive ? fmtDateTime(u.lastActive) : undefined}
+                      title={
+                        u.lastActive ? fmtDateTime(u.lastActive) : undefined
+                      }
                     >
                       {lastActiveLabel(u.lastActive)}
                     </span>
 
                     <span role="cell" className="text-right">
                       {!readOnly && (
-                      <Menu.Root>
-                        <Menu.Trigger asChild>
-                          <button
-                            type="button"
-                            className="k-btn k-btn-ghost h-7 w-7 justify-center p-0"
-                            aria-label={`Actions for ${u.username}`}
-                          >
-                            <MoreHorizontal size={15} strokeWidth={1.5} aria-hidden />
-                          </button>
-                        </Menu.Trigger>
-                        <Menu.Portal>
-                          <Menu.Content
-                            align="end"
-                            sideOffset={4}
-                            className="z-50 min-w-[210px] rounded-k border border-k-line bg-k-paper p-1 shadow-[var(--k-shadow-m)]"
-                          >
-                            <Menu.Item
-                              className="k-menu-item"
-                              onSelect={() => setEditing(u)}
+                        <Menu.Root>
+                          <Menu.Trigger asChild>
+                            <button
+                              type="button"
+                              className="k-btn k-btn-ghost h-7 w-7 justify-center p-0"
+                              aria-label={`Actions for ${u.username}`}
                             >
-                              Edit
-                            </Menu.Item>
-                            {locked && (
+                              <MoreHorizontal
+                                size={15}
+                                strokeWidth={1.5}
+                                aria-hidden
+                              />
+                            </button>
+                          </Menu.Trigger>
+                          <Menu.Portal>
+                            <Menu.Content
+                              align="end"
+                              sideOffset={4}
+                              className="z-50 min-w-[210px] rounded-k border border-k-line bg-k-paper p-1 shadow-[var(--k-shadow-m)]"
+                            >
                               <Menu.Item
                                 className="k-menu-item"
-                                onSelect={() => unlock(u)}
+                                onSelect={() => setEditing(u)}
                               >
-                                Clear lockout
+                                Edit
                               </Menu.Item>
-                            )}
-                            <Menu.Item
-                              className="k-menu-item"
-                              onSelect={() =>
-                                forceLogout.mutate(u.id, {
-                                  onSuccess: (r) => toast.success(r.message),
-                                  onError: (e) =>
-                                    fail(e, "Could not sign them out."),
-                                })
-                              }
-                            >
-                              Sign out everywhere
-                            </Menu.Item>
+                              {locked && (
+                                <Menu.Item
+                                  className="k-menu-item"
+                                  onSelect={() => unlock(u)}
+                                >
+                                  Clear lockout
+                                </Menu.Item>
+                              )}
+                              <Menu.Item
+                                className="k-menu-item"
+                                onSelect={() =>
+                                  forceLogout.mutate(u.id, {
+                                    onSuccess: (r) => toast.success(r.message),
+                                    onError: (e) =>
+                                      fail(e, "Could not sign them out."),
+                                  })
+                                }
+                              >
+                                Sign out everywhere
+                              </Menu.Item>
 
-                            <Menu.Separator className="my-1 h-px bg-k-line-2" />
+                              <Menu.Separator className="my-1 h-px bg-k-line-2" />
 
-                            <Menu.Item
-                              className="k-menu-item k-menu-item-danger"
-                              disabled={isSelf}
-                              onSelect={() => setDeleting(u)}
-                            >
-                              {isSelf ? "Delete (not yourself)" : "Delete"}
-                            </Menu.Item>
-                          </Menu.Content>
-                        </Menu.Portal>
-                      </Menu.Root>
+                              <Menu.Item
+                                className="k-menu-item k-menu-item-danger"
+                                disabled={isSelf}
+                                onSelect={() => setDeleting(u)}
+                              >
+                                {isSelf ? "Delete (not yourself)" : "Delete"}
+                              </Menu.Item>
+                            </Menu.Content>
+                          </Menu.Portal>
+                        </Menu.Root>
                       )}
                     </span>
                   </div>
@@ -304,26 +330,26 @@ export function UsersTab() {
         {/* The freeze control. Below the table and visually quiet, because it
             is a cutover tool rather than a daily one. */}
         {!readOnly && (
-        <div className="k-callout mt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-[12.5px] font-semibold text-k-ink">
-                Sign everyone out
+          <div className="k-callout mt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[12.5px] font-semibold text-k-ink">
+                  Sign everyone out
+                </div>
+                <p className="mt-0.5 text-[11.5px] leading-[1.5] text-k-mute">
+                  Revokes every session in one statement — including yours, and
+                  including the old Kora, which shares the same token version.
+                </p>
               </div>
-              <p className="mt-0.5 text-[11.5px] leading-[1.5] text-k-mute">
-                Revokes every session in one statement — including yours, and
-                including the old Kora, which shares the same token version.
-              </p>
+              <button
+                type="button"
+                className="k-btn k-btn-outline k-btn-sm flex-none"
+                onClick={() => setLoggingOutAll(true)}
+              >
+                Sign everyone out
+              </button>
             </div>
-            <button
-              type="button"
-              className="k-btn k-btn-outline k-btn-sm flex-none"
-              onClick={() => setLoggingOutAll(true)}
-            >
-              Sign everyone out
-            </button>
           </div>
-        </div>
         )}
       </div>
 

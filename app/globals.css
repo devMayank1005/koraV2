@@ -60,6 +60,14 @@
      Kept out of MUST_OVERRIDE_IN_DARK for that reason. */
   --k-on-fill: #18181b;
 
+  /* Label ON the brand fill — primary buttons, the active filter chip, the
+     admin avatar. White in light, black in dark, because the primary itself
+     inverts: #005184 takes white at 8.6:1, #7FC4E8 takes white at 1.87:1 and
+     black at 10.96:1. It existed as two `.dark` override rules and one
+     `text-white` that nobody had overridden at all; as a token there is one
+     place to be right. */
+  --k-on-primary: #ffffff;
+
   /* The offline banner is white 12.5px on solid red. The handoff says to use
      --k-fill-risk, but white on #EF4444 is 3.76:1 — below AA, on the one
      message telling people their work is not being saved. A darker red for
@@ -143,9 +151,19 @@
 
 /* --------------------------------------------------------------------------
    Dark mode.
-   The handoff specifies only four values (primary #7FC4E8 and the three
-   navy grounds). Everything else below is DERIVED and awaiting design review
-   — see the plan's "dark mode" note. Grounds are navy, not neutral grey.
+
+   GROUNDS ARE NEUTRAL, AND THAT IS A DEPARTURE FROM THE HANDOFF, which
+   specifies three navy grounds (#0A1F2E / #00263D / #003252) alongside the
+   primary. Navy at card lightness competes with the brand blue it carries:
+   a #7FC4E8 button on a #003252 card is blue on blue, and every status hue
+   picks up the same cast. The grounds are now the zinc scale the LIGHT theme
+   already uses, inverted — so the two themes are the same product rather than
+   two palettes, and a hue on screen is the data's rather than the ground's.
+
+   Primary and every fill are untouched: the accent is still Kognoz blue.
+
+   Every value below is measured, not chosen — tests/design/contrast.test.ts
+   reads this file and fails on the ratio, not on opinion.
    -------------------------------------------------------------------------- */
 .dark {
   --k-primary: #7fc4e8;
@@ -181,7 +199,9 @@
   --k-text-sky: #7fc4e8;
   --k-text-olive: #b4d97a;
   --k-text-teal: #7fd4c1;
-  --k-text-grey: #a9b6bf;
+  /* The only text-safe pair that was a BLUE grey rather than a hue. On a
+     neutral ground it read as a colour; this is the same lightness, neutral. */
+  --k-text-grey: #b4b4bb;
 
   --k-tint-green: rgba(136, 183, 135, 0.2);
   --k-tint-cyan: rgba(0, 155, 221, 0.2);
@@ -193,31 +213,38 @@
   --k-tint-grey: rgba(147, 149, 152, 0.24);
   --k-tint-neutral: rgba(161, 161, 170, 0.2);
 
-  --k-paper: #003252; /* card surface (handoff)  */
-  --k-surface: #00263d; /* page ground  (handoff)  */
+  --k-paper: #18181b; /* card surface, and the sidebar */
+  --k-surface: #09090b; /* page ground                   */
 
   /* Borders do more work in dark mode than in light: shadows are all but
      invisible against a dark ground, so an edge is often the only thing
      separating a card from the page. The light values, transposed directly,
      landed at 1.45:1 — technically present, practically not there. */
-  --k-line-2: #154c6e; /* inner divider                         */
-  --k-line: #276890; /* structural hairline — 2.20:1 on paper */
-  --k-field: #3d7fa0; /* control boundary   — 3.00:1, meets AA */
+  --k-line-2: #27272a; /* inner divider                         */
+  --k-line: #3f3f46; /* structural hairline — 1.70:1 on paper */
+  --k-field: #71717a; /* control boundary   — 3.67:1, meets AA */
 
   /* Text ramp, every step measured against --k-paper:
-       mute-2  4.52:1   dimmest — 10px eyebrows and column headers
-       mute    6.12:1   secondary text
-       ink-3   7.9 :1   tertiary body
-       ink    13.5 :1   body
-     The light theme puts 10px labels at 2.56:1, which is below AA; there is no
-     reason to reproduce that here, so the dark ramp starts above it. */
-  --k-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239bb3c6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+       mute-2   4.65:1   dimmest — 10px eyebrows and column headers
+       mute     6.91:1   secondary text
+       ink-3   11.99:1   tertiary body
+       ink     16.97:1   body
+     Monotonic by construction, and the test asserts it: a ramp whose steps
+     cross makes "less prominent" stop meaning anything.
 
-  --k-mute-2: #7e9aaf;
-  --k-mute: #9bb3c6;
-  --k-ink-3: #bccedc;
-  --k-ink-2: #0a1f2e; /* deepest ground (handoff) */
-  --k-ink: #e6eef5;
+     MUTE-2 CLEARS AA HERE EVEN THOUGH IT DOES NOT IN LIGHT. The light value
+     is 2.32:1 on white and is documented as non-text only, but `.k-nav-group`
+     and `.k-kbd` do put 10px text in it. Reproducing a known-bad light value
+     in a theme being rebuilt from scratch would be copying a defect for
+     symmetry's sake, so the dark ramp starts above the line. */
+  --k-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
+  --k-mute-2: #82828b;
+  --k-mute: #a1a1aa;
+  --k-ink-3: #d4d4d8;
+  --k-ink-2: #000000; /* deepest ground */
+  --k-on-primary: #000000; /* 10.96:1 on #7FC4E8; white is 1.87:1 */
+  --k-ink: #fafafa;
 
   --k-shadow-s: 0 1px 2px rgba(0, 0, 0, 0.3);
   --k-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
@@ -263,8 +290,8 @@
   --color-k-ink-3: var(--k-ink-3);
 
   /* Fonts — bound to next/font variables in app/layout.tsx */
-  --font-k-head: var(--font-k-head), Calibri, Carlito, "Open Sans", system-ui,
-    sans-serif;
+  --font-k-head:
+    var(--font-k-head), Calibri, Carlito, "Open Sans", system-ui, sans-serif;
   --font-k-body: var(--font-k-body), "Open Sans", system-ui, sans-serif;
   --font-k-mono: var(--font-k-mono), "JetBrains Mono", ui-monospace, monospace;
 
@@ -332,8 +359,8 @@
   h4,
   kbd,
   .k-num {
-    font-family: var(--font-k-head), Calibri, Carlito, "Open Sans", system-ui,
-      sans-serif;
+    font-family:
+      var(--font-k-head), Calibri, Carlito, "Open Sans", system-ui, sans-serif;
   }
 
   :focus-visible {
@@ -639,12 +666,8 @@
 
   .k-btn-primary {
     background: var(--k-primary);
-    color: #fff;
+    color: var(--k-on-primary);
     border: 1px solid var(--k-primary);
-  }
-
-  .dark .k-btn-primary {
-    color: var(--k-ink-2);
   }
 
   .k-btn-primary:not(:disabled):hover {
@@ -973,11 +996,7 @@
   .k-chip[data-active="true"] {
     background: var(--k-primary);
     border-color: var(--k-primary);
-    color: #fff;
-  }
-
-  .dark .k-chip[data-active="true"] {
-    color: var(--k-ink-2);
+    color: var(--k-on-primary);
   }
 
   .k-chip-sm {

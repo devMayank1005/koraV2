@@ -1,4 +1,8 @@
-import { STATUS_COLORS, RAG_COLORS, QUERY_LEVEL_COLORS } from "@/lib/domain/constants";
+import {
+  STATUS_COLORS,
+  RAG_COLORS,
+  QUERY_LEVEL_COLORS,
+} from "@/lib/domain/constants";
 import type { Rag, Status } from "@/lib/domain/types";
 
 /**
@@ -63,13 +67,13 @@ export function RagDot({ rag, size = 8 }: { rag: Rag; size?: number }) {
     <span className="inline-flex items-center gap-1.5">
       <span
         aria-hidden
-        className="inline-block shrink-0 rounded-full"
-        style={{
-          width: size,
-          height: size,
-          background: c.fill,
-          boxShadow: "inset 0 0 0 1px rgba(0,0,0,.22)",
-        }}
+        // `.k-dot` rather than the ring inline: the class carries a
+        // `.dark` variant that lightens the ring, and an inline box-shadow
+        // beats it — so on a dark ground the ring was black on black and the
+        // dot lost the very edge the contrast audit added it for. Size and
+        // fill stay inline, where they vary.
+        className="k-dot"
+        style={{ width: size, height: size, background: c.fill }}
       />
       <span className="sr-only">{rag}</span>
     </span>
@@ -83,13 +87,8 @@ export function RagPill({ rag }: { rag: Rag }) {
     <span className="k-status" style={{ color: c.text }}>
       <span
         aria-hidden
-        className="inline-block shrink-0 rounded-full"
-        style={{
-          width: 6,
-          height: 6,
-          background: c.fill,
-          boxShadow: "inset 0 0 0 1px rgba(0,0,0,.22)",
-        }}
+        className="k-dot"
+        style={{ width: 6, height: 6, background: c.fill }}
       />
       {rag}
     </span>

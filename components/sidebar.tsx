@@ -4,9 +4,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
-  LayoutDashboard, Workflow, LayoutGrid, LifeBuoy, Shield,
-  Search, PanelLeftClose, PanelLeftOpen, LogOut,
+  LayoutDashboard,
+  Workflow,
+  LayoutGrid,
+  LifeBuoy,
+  Shield,
+  Search,
+  PanelLeftClose,
+  PanelLeftOpen,
+  LogOut,
 } from "lucide-react";
 import { useUi } from "@/lib/store/ui";
 import { ThemeToggle } from "@/components/theme";
@@ -39,7 +48,9 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Main",
     items: [
       {
-        href: "/dashboard", label: "Dashboard", icon: LayoutDashboard,
+        href: "/dashboard",
+        label: "Dashboard",
+        icon: LayoutDashboard,
         match: (p) => p === "/dashboard" || p === "/",
       },
     ],
@@ -48,7 +59,9 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Trackers",
     items: [
       {
-        href: "/integrations", label: "Integrations", icon: Workflow,
+        href: "/integrations",
+        label: "Integrations",
+        icon: Workflow,
         match: (p) => p.startsWith("/integrations"),
       },
       {
@@ -56,11 +69,15 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
         // inconsistency is in the handoff itself. Following the handoff for
         // the label and the old app for the URL, since the URL is a contract
         // with everyone's bookmarks.
-        href: "/implementation", label: "Implementations", icon: LayoutGrid,
+        href: "/implementation",
+        label: "Implementations",
+        icon: LayoutGrid,
         match: (p) => p.startsWith("/implementation"),
       },
       {
-        href: "/ams", label: "AMS & Support", icon: LifeBuoy,
+        href: "/ams",
+        label: "AMS & Support",
+        icon: LifeBuoy,
         match: (p) => p.startsWith("/ams"),
       },
     ],
@@ -69,7 +86,10 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     label: "System",
     items: [
       {
-        href: "/admin", label: "Admin", icon: Shield, adminOnly: true,
+        href: "/admin",
+        label: "Admin",
+        icon: Shield,
+        adminOnly: true,
         match: (p) => p.startsWith("/admin"),
       },
     ],
@@ -105,6 +125,7 @@ export function Sidebar({
   const collapsed = useUi((s) => s.sidebarCollapsed) && !mobile;
   const toggle = useUi((s) => s.toggleSidebar);
   const [signingOut, setSigningOut] = useState(false);
+  const qc = useQueryClient();
 
   /**
    * Signs out client-side rather than as a form POST.
@@ -114,17 +135,33 @@ export function Sidebar({
    * cookie is gone but the router still holds the rendered shell, and without
    * it a back-button press shows the app chrome for a session that no longer
    * exists.
+   *
+   * ONLY NAVIGATE IF THE COOKIE ACTUALLY WENT. The redirect used to sit in a
+   * `finally`, so a failed request — offline, a 500 — still sent you to
+   * /login while the session survived, and `proxy.ts` bounced you straight
+   * back into the app. That reads as the app refusing to sign you out, with
+   * nothing said. Now a failure says so and leaves you where you are.
+   *
+   * THE QUERY CACHE GOES TOO. Every client, work-log row and audit entry this
+   * session fetched is still in memory otherwise, and the next person to sign
+   * in on this machine gets the previous one's data on screen until each query
+   * refetches. `users-tab.tsx` solves the same problem with a hard navigation
+   * and says so; clearing the cache is the smaller half of that.
    */
   async function signOut() {
     setSigningOut(true);
     try {
-      await fetch("/api/auth/logout", {
+      const res = await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "same-origin",
       });
-    } finally {
+      if (!res.ok) throw new Error(String(res.status));
+      qc.clear();
       router.replace("/login");
       router.refresh();
+    } catch {
+      toast.error("Could not sign out. Check your connection and try again.");
+      setSigningOut(false);
     }
   }
 
@@ -170,26 +207,26 @@ export function Sidebar({
           a control that does nothing the first time someone presses it is worse
           than one that is not there. Passing onSearch brings it back. */}
       {onSearch && (
-      <div className={cn("pb-1", collapsed ? "px-2 pt-3" : "px-3 pt-3")}>
-        <button
-          type="button"
-          onClick={onSearch}
-          title={collapsed ? "Search (⌘K)" : undefined}
-          className={cn(
-            "flex h-8 w-full items-center gap-2 rounded-[4px] border border-k-line bg-k-surface text-k-mute",
-            collapsed ? "justify-center px-0" : "px-2.5",
-          )}
-          style={{ fontSize: 12 }}
-        >
-          <Search size={13} strokeWidth={1.5} className="flex-none" />
-          {!collapsed && (
-            <>
-              <span className="flex-1 text-left">Search…</span>
-              <span className="k-kbd">⌘K</span>
-            </>
-          )}
-        </button>
-      </div>
+        <div className={cn("pb-1", collapsed ? "px-2 pt-3" : "px-3 pt-3")}>
+          <button
+            type="button"
+            onClick={onSearch}
+            title={collapsed ? "Search (⌘K)" : undefined}
+            className={cn(
+              "flex h-8 w-full items-center gap-2 rounded-[4px] border border-k-line bg-k-surface text-k-mute",
+              collapsed ? "justify-center px-0" : "px-2.5",
+            )}
+            style={{ fontSize: 12 }}
+          >
+            <Search size={13} strokeWidth={1.5} className="flex-none" />
+            {!collapsed && (
+              <>
+                <span className="flex-1 text-left">Search…</span>
+                <span className="k-kbd">⌘K</span>
+              </>
+            )}
+          </button>
+        </div>
       )}
 
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2.5">
@@ -204,7 +241,9 @@ export function Sidebar({
               {!collapsed && (
                 <div
                   className="k-nav-group"
-                  style={{ padding: gi === 0 ? "8px 10px 4px" : "12px 10px 4px" }}
+                  style={{
+                    padding: gi === 0 ? "8px 10px 4px" : "12px 10px 4px",
+                  }}
                 >
                   {group.label}
                 </div>
@@ -220,7 +259,10 @@ export function Sidebar({
                     aria-current={active ? "page" : undefined}
                     data-active={active}
                     title={collapsed ? item.label : undefined}
-                    className={cn("k-nav-item", collapsed && "justify-center px-0")}
+                    className={cn(
+                      "k-nav-item",
+                      collapsed && "justify-center px-0",
+                    )}
                   >
                     <Icon size={15} strokeWidth={1.5} className="flex-none" />
                     {!collapsed && item.label}
@@ -241,7 +283,11 @@ export function Sidebar({
           )}
         >
           <span
-            className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-k-primary font-k-head text-[12px] font-bold text-white"
+            // Not `text-white`: in dark mode the primary is #7FC4E8 and white
+            // on it measures 1.87:1. `--k-on-primary` is white's per-theme
+            // counterpart, and the primary button takes its label from the
+            // same token.
+            className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-k-primary font-k-head text-[12px] font-bold text-[var(--k-on-primary)]"
             aria-hidden="true"
           >
             {(user.name || user.username).charAt(0).toUpperCase()}
@@ -262,7 +308,10 @@ export function Sidebar({
             collapsed ? "flex-col items-center" : "items-center",
           )}
         >
-          <ThemeToggle className="k-btn k-btn-ghost k-btn-sm !px-2" showLabel={!collapsed} />
+          <ThemeToggle
+            className="k-btn k-btn-ghost k-btn-sm !px-2"
+            showLabel={!collapsed}
+          />
           <button
             type="button"
             onClick={signOut}
