@@ -1049,6 +1049,64 @@
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
   }
 
+  /* --- Short screens ------------------------------------------------------
+     The sidebar costs 527px expanded: header 96, search 48, nav 280, footer
+     103. A 1366x768 laptop at 125% browser zoom has about 518px of viewport,
+     and a banner takes 37 more — so the nav grows a scrollbar on exactly the
+     machines this app is used on.
+
+     Rather than make every screen denser, the spacing tightens only when there
+     is not enough room for it. Tall windows keep the handoff's rhythm — 34px
+     rows, the stacked wordmark — untouched. Below 700px it comes down to about
+     430px, which fits a 500px viewport with a banner up, and NOTHING IS
+     HIDDEN: the search trigger, the wordmark and all six nav rows stay. A
+     control you cannot find is worse than one that is 4px shorter.
+
+     Keyed on height alone, so it applies to a short desktop window as readily
+     as to a small laptop. The collapsed rail (56px) is unaffected — it has no
+     labels to tighten.
+     ----------------------------------------------------------------------- */
+  @media (max-height: 700px) {
+    /* Logo beside the wordmark instead of above it — the single biggest
+       saving, and the only one that changes the composition rather than the
+       spacing. */
+    .k-side-head {
+      flex-direction: row;
+      justify-content: center;
+      gap: 8px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .k-side-search {
+      padding-top: 8px;
+      padding-bottom: 2px;
+    }
+
+    .k-side-nav {
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+
+    .k-side-nav .k-nav-item {
+      height: 30px;
+    }
+
+    .k-side-nav .k-nav-group {
+      padding-top: 6px !important;
+      padding-bottom: 2px !important;
+    }
+
+    .k-side-foot {
+      padding: 8px;
+    }
+
+    .k-side-avatar {
+      height: 24px;
+      width: 24px;
+    }
+  }
+
   /* --- Menus -------------------------------------------------------------
      Radix DropdownMenu items. The row menu on the admin users table is the
      first menu in the app; @radix-ui/react-dropdown-menu was already a
@@ -1228,9 +1286,12 @@
      `sticky` keeps the rail in flow, so it occupies its own height whatever
      that turns out to be, and still pins to the top on scroll. No constant to
      keep in step. */
+  /* The banner rail no longer needs to be sticky: the shell is a column of
+     `h-dvh` and this is its first row, so it is pinned by construction. The
+     z-index stays — banners sit above the content's shadows and the sidebar's
+     border. */
   .k-banner-rail {
-    position: sticky;
-    top: 0;
+    position: relative;
     z-index: 60;
   }
 

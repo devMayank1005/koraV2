@@ -178,7 +178,7 @@ export function Sidebar({
           ever sit on white — never on Deep Blue. */}
       <div
         className={cn(
-          "flex flex-col items-center gap-1.5 border-b border-k-line-2",
+          "k-side-head flex flex-col items-center gap-1.5 border-b border-k-line-2",
           collapsed ? "px-2 py-4" : "px-4 pb-4 pt-5",
         )}
       >
@@ -207,7 +207,7 @@ export function Sidebar({
           a control that does nothing the first time someone presses it is worse
           than one that is not there. Passing onSearch brings it back. */}
       {onSearch && (
-        <div className={cn("pb-1", collapsed ? "px-2 pt-3" : "px-3 pt-3")}>
+        <div className={cn("k-side-search pb-1", collapsed ? "px-2 pt-3" : "px-3 pt-3")}>
           <button
             type="button"
             onClick={onSearch}
@@ -229,7 +229,7 @@ export function Sidebar({
         </div>
       )}
 
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2.5">
+      <nav className="k-side-nav flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2.5">
         {GROUPS.map((group, gi) => {
           const items = group.items.filter(
             (i) => !i.adminOnly || effectiveRole === "admin",
@@ -275,7 +275,7 @@ export function Sidebar({
       </nav>
 
       {/* Profile footer */}
-      <div className="border-t border-k-line-2 p-3">
+      <div className="k-side-foot border-t border-k-line-2 p-3">
         <div
           className={cn(
             "flex items-center gap-2.5 rounded-[4px] bg-k-surface",
@@ -287,7 +287,7 @@ export function Sidebar({
             // on it measures 1.87:1. `--k-on-primary` is white's per-theme
             // counterpart, and the primary button takes its label from the
             // same token.
-            className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-k-primary font-k-head text-[12px] font-bold text-[var(--k-on-primary)]"
+            className="k-side-avatar flex h-7 w-7 flex-none items-center justify-center rounded-full bg-k-primary font-k-head text-[12px] font-bold text-[var(--k-on-primary)]"
             aria-hidden="true"
           >
             {(user.name || user.username).charAt(0).toUpperCase()}
