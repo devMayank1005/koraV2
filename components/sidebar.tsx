@@ -16,6 +16,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   LogOut,
+  TrendingUp,
+  ExternalLink,
 } from "lucide-react";
 import { useUi } from "@/lib/store/ui";
 import { ThemeToggle } from "@/components/theme";
@@ -41,7 +43,29 @@ interface NavItem {
   adminOnly?: boolean;
   /** Sub-routes that should still light this item up. */
   match: (path: string) => boolean;
+  /**
+   * Leaves this app. Renders as a plain anchor opening a new tab rather than a
+   * `<Link>`, because prefetching another origin is pointless and a soft
+   * navigation to one is impossible.
+   */
+  external?: boolean;
 }
+
+/**
+ * The old Kora, for the one screen this app does not have.
+ *
+ * Sales Pipeline lives only in v1, and rather than proxy that app under this
+ * one — which would mean rewriting its root-absolute assets, widening this
+ * app's CSP to admit three script CDNs it deliberately excludes, and accepting
+ * that v1's client-side router would then own every click after the first —
+ * the nav simply points at it.
+ *
+ * An env var rather than a constant: the URL moves at cutover, and when
+ * Pipeline is ported here it should disappear rather than be edited out. Unset
+ * means the item is not rendered at all, so a deployment with no legacy app
+ * behind it does not offer a dead link.
+ */
+const LEGACY_URL = process.env.NEXT_PUBLIC_LEGACY_KORA_URL;
 
 const GROUPS: { label: string; items: NavItem[] }[] = [
   {
@@ -80,6 +104,18 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
         icon: LifeBuoy,
         match: (p) => p.startsWith("/ams"),
       },
+      ...(LEGACY_URL
+        ? [
+            {
+              href: `${LEGACY_URL.replace(/\/$/, "")}/pipeline`,
+              label: "Sales Pipeline",
+              icon: TrendingUp,
+              external: true,
+              // Never the active item: it is never the current route.
+              match: () => false,
+            } satisfies NavItem,
+          ]
+        : []),
     ],
   },
   {
@@ -207,7 +243,12 @@ export function Sidebar({
           a control that does nothing the first time someone presses it is worse
           than one that is not there. Passing onSearch brings it back. */}
       {onSearch && (
-        <div className={cn("k-side-search pb-1", collapsed ? "px-2 pt-3" : "px-3 pt-3")}>
+        <div
+          className={cn(
+            "k-side-search pb-1",
+            collapsed ? "px-2 pt-3" : "px-3 pt-3",
+          )}
+        >
           <button
             type="button"
             onClick={onSearch}
@@ -251,10 +292,18 @@ export function Sidebar({
               {items.map((item) => {
                 const active = item.match(pathname);
                 const Icon = item.icon;
+                const Tag = item.external ? "a" : Link;
                 return (
-                  <Link
+                  <Tag
                     key={item.href}
                     href={item.href}
+                    {...(item.external
+                      ? {
+                          target: "_blank",
+                          rel: "noopener noreferrer",
+                          title: `${item.label} — opens the current Kora`,
+                        }
+                      : {})}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     data-active={active}
@@ -266,7 +315,15 @@ export function Sidebar({
                   >
                     <Icon size={15} strokeWidth={1.5} className="flex-none" />
                     {!collapsed && item.label}
-                  </Link>
+                    {!collapsed && item.external && (
+                      <ExternalLink
+                        size={12}
+                        strokeWidth={1.5}
+                        aria-hidden
+                        className="ml-auto flex-none text-k-mute-2"
+                      />
+                    )}
+                  </Tag>
                 );
               })}
             </div>
